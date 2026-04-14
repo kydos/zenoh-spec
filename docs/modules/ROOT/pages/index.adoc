@@ -1,5 +1,5 @@
 = Zenoh Protocol Specification
-:description: The complete specification of the Zenoh v2.0.0 protocol.
+:description: The complete specification of the Zenoh v1.0.0 protocol.
 
 Zenoh (pronounced _/zeno/_) is a pub/sub/query protocol engineered for the full compute continuum — from microcontrollers to cloud infrastructure.
 This document formally defines the wire format, protocol behaviours, and semantics of Zenoh version *{zenoh-version}*.

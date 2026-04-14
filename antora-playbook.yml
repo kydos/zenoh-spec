@@ -20,5 +20,5 @@ asciidoc:
     page-pagination: ''
     source-highlighter: highlight.js
     icons: font
-    spec-version: 2.0.0
-    zenoh-version: 2.0.0
+    spec-version: 1.0.0
+    zenoh-version: 1.0.0

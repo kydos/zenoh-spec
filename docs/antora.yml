@@ -1,7 +1,7 @@
 name: spec
 title: Zenoh Protocol Specification
-version: '2.0.0'
-display_version: 'v2.0.0'
+version: '1.0.0'
+display_version: 'v1.0.0'
 start_page: index.adoc
 nav:
   - modules/ROOT/nav.adoc
