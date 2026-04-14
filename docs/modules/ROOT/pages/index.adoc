@@ -27,11 +27,11 @@ Implementors should pay close attention to the xref:wire:index.adoc[Wire Format]
 |xref:scouting:index.adoc[Scouting]
 |Peer and router discovery via the Scouting sub-protocol.
 
-|xref:transport:index.adoc[Transport]
-|Link management, batching, fragmentation, and keep-alive.
-
 |xref:session:index.adoc[Session]
 |Session establishment, declarations, and interests.
+
+|xref:transport:index.adoc[Transport]
+|Link management, batching, fragmentation, and keep-alive.
 
 |xref:data-plane:index.adoc[Data Plane]
 |Push, query, and reply message flows.
