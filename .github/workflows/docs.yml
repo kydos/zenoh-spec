@@ -31,6 +31,10 @@ jobs:
       - name: Build site
         run: npm run build
 
+      - name: Inject CNAME for custom domain
+        if: github.ref == 'refs/heads/main'
+        run: echo "spec.zenoh.io" > build/site/CNAME
+
       - name: Upload Pages artifact
         if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
