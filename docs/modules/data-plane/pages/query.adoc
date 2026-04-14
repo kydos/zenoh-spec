@@ -10,12 +10,14 @@ A query on the wire consists of three layers:
 
 ----
 [Transport layer]
-  FRAME (0x05) with seq_num + QoS extension
+  FRAME (0x05) with seq_num + QoS extension   [default transport]
     [Network layer]
       REQUEST (0x1C) with key_expr + extensions
         [Data layer]
           QUERY (0x03) with consolidation + parameters + extensions
 ----
+
+In negotiated low-latency unicast mode, the REQUEST network message may be serialized directly by the transport instead of being wrapped in FRAME.
 
 == REQUEST Network Message (0x1C)
 
@@ -157,14 +159,15 @@ Common convention is `key=value` pairs separated by `&` (analogous to URL query 
 |Ext ID |Type |M |Extension
 
 |0x1 |ZBuf |N |**SourceInfo** — identifies the originating querier
-|0x3 |ZBuf |N |**QueryBody** — value payload attached to the query (e.g., for PUT-with-query patterns)
-|0x4 |Unit |Y |**Shm** for QueryBody (feature-gated; implies SHM-capable receiver)
-|0x5 |ZBuf |N |**Attachment** — user-defined key/value metadata
+|0x3 |ZBuf |N |**QueryBody** — `ValueType` payload attached to the query
+|0x5 |ZBuf |N |**Attachment** — opaque user attachment buffer
 |===
 
 ==== QueryBody Extension (ZBuf, ID=0x3, M=false)
 
 Attaches a value payload to the query.
+The extension payload is a `ValueType`, consisting of an Encoding followed by a payload buffer.
+When shared-memory support is enabled, the `ValueType` may carry its own secondary SHM marker at secondary extension ID `0x04`; this is not a separate top-level QUERY extension.
 ZBuf payload:
 
 ----
@@ -172,6 +175,11 @@ ZBuf payload:
 +---------------+
 ~ pl: <u8;z32>  ~   Query body payload bytes
 ----
+
+==== Attachment Extension (ZBuf, ID=0x5, M=false)
+
+Attachment is an opaque `ZBuf`.
+Implementations may encode structured metadata inside it, but the protocol layer itself does not define a key/value attachment schema.
 
 == Request/Response Flow
 
@@ -195,7 +203,7 @@ A                   B₁                  B₂
 
 A querier considers the query complete when it has received a RESPONSE_FINAL from each independent source, the Timeout extension expires, or the Budget is exhausted.
 
-== Complete REQUEST → QUERY Wire Layout
+== Complete REQUEST → QUERY Wire Layout (Default Transport)
 
 ----
 [u16 LE]                    TCP length prefix
@@ -210,5 +218,5 @@ A querier considers the query complete when it has received a RESPONSE_FINAL fro
   [QUERY header]            Z|P|C|0x03
   [consolidation byte]      if C
   [~ parameters ~]          if P: <u8;z16>
-  [qry_exts]                SourceInfo, QueryBody, Shm, Attachment
+  [qry_exts]                SourceInfo, QueryBody, Attachment
 ----

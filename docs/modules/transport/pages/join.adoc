@@ -12,6 +12,7 @@ JOIN replaces the unicast INIT/OPEN exchange by bundling all negotiation paramet
 
 JOIN MUST be sent periodically throughout the session lifetime.
 If a node stops receiving JOIN messages from a peer within the JOIN lease period, it considers that peer offline and withdraws all declarations attributed to it.
+If `S==0`, the receiver uses the protocol defaults: resolution byte `0x0A` (32-bit request IDs and frame sequence numbers) and multicast batch size `8192`.
 
 == Wire Format
 
@@ -70,8 +71,8 @@ Default: `0x0A` (FSN = 32-bit, RID = 32-bit).
 
 === Sequence Numbers
 
-`next_sn_re`:: The _next_ sequence number the sender will use on the reliable channel (default, non-QoS priority).
-`next_sn_be`:: The _next_ sequence number the sender will use on the best-effort channel.
+`next_sn_re`:: The _next_ sequence number the sender will use on the reliable channel for the default, non-QoS lane.
+`next_sn_be`:: The _next_ sequence number the sender will use on the best-effort channel for the default, non-QoS lane.
 
 When the QoS extension is present, per-priority SNs in the extension supersede the body SNs for their respective priorities.
 
@@ -81,14 +82,14 @@ When the QoS extension is present, per-priority SNs in the extension supersede t
 |===
 |Ext ID |Type |M |Extension
 
-|0x1 |ZBuf |Y |**QoS SNs** — per-priority next SNs (see below)
-|0x2 |ZBuf |Y |**Shm** — shared-memory capabilities
+|0x1 |ZBuf |Y |**QoS SNs** — per-priority next sequence numbers (see below)
+|0x2 |ZBuf |Y |**Shm** — shared-memory capabilities; emitted only by implementations built with shared-memory support
 |0x7 |Z64  |N |**Patch** — protocol patch version
 |===
 
 === QoS SN Extension (ZBuf, ID=0x1, M=true)
 
-Carries an array of 8 `PrioritySn` entries (one per priority level, 0=Control … 7=Background), each containing two VLE-encoded u32 values:
+Carries an array of 8 `PrioritySn` entries (one per priority level, 0=Control … 7=Background), each containing two VLE-encoded sequence numbers:
 
 ----
 For each of the 8 priority levels (0 to 7):

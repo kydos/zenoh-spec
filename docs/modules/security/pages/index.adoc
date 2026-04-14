@@ -1,7 +1,8 @@
 = Security
 :description: Security model, authentication, and access control in Zenoh.
 
-Zenoh provides a layered security model addressing both transport-level and application-level concerns.
+Zenoh security is layered, but only part of it is standardized by the base wire protocol.
+Transport confidentiality and peer authentication depend primarily on the selected link protocol, while session authentication and access control are negotiated or enforced by implementations above the raw message syntax.
 
 == Layers
 
@@ -10,32 +11,34 @@ Zenoh provides a layered security model addressing both transport-level and appl
 |Layer |Mechanism
 
 |Transport security
-|TLS 1.3 (over TCP) and QUIC provide link encryption, integrity, and optional mutual authentication via X.509 certificates.
+|Provided by the selected underlying link protocol when that protocol supports it (for example TLS over TCP or QUIC with TLS 1.3).
+The Zenoh wire protocol does not add its own encryption or signature layer on top of an insecure link.
 See xref:transport:links.adoc[].
 
 |Session authentication
-|The `ext_auth` extension in xref:session:open-accept.adoc[Open/Accept] enables challenge-response authentication before a session is established.
+|The `Auth` extension on INIT/OPEN carries opaque implementation-defined authentication payloads before a session is fully activated.
 See xref:authentication.adoc[].
 
 |Access control
-|Per-session, per-operation rules restrict which key expressions a session may publish to, subscribe to, or query.
+|Access-control policy is enforced locally by each node and is configured out of band.
+The base wire protocol does not define a portable ACL syntax or policy-distribution mechanism.
 See xref:access-control.adoc[].
 |===
 
 == Security Properties
 
-This specification aims to provide:
+This specification supports the following security properties when the deployment enables the corresponding mechanisms:
 
 Confidentiality::
-Data in transit is encrypted on authenticated links.
+Provided by secure transport links such as TLS- or QUIC-based locators, not by bare TCP or UDP alone.
 
 Integrity::
-Data cannot be silently tampered with in transit.
+Provided by the underlying secure transport and by strict message decoding/validation.
 
 Authenticity::
-Nodes can verify the identity of their peers before exchanging data.
+Peers may be authenticated by the transport layer, by the session-layer `Auth` exchange, or by both.
 
 Authorisation::
-Operations on key expressions are restricted by policy.
+Operations on key expressions may be allowed or denied by local policy.
 
 See xref:threat-model.adoc[] for the threats this model is designed to address.

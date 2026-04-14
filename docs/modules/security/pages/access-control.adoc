@@ -1,47 +1,31 @@
 = Access Control
 :description: Access control rules for restricting Zenoh operations per session.
 
-_Access control_ restricts which operations a session is permitted to perform on which key expressions.
-It is evaluated locally by each node based on the authenticated identity of the remote session.
+_Access control_ restricts which operations a node is willing to accept from a peer on which key expressions.
+It is evaluated locally by each node based on peer identity, local configuration, and implementation-specific policy logic.
 
-== Model
+== Scope
 
-Access control in Zenoh is _rule-based_:
-a list of rules is evaluated in priority order; the first matching rule's `permission` applies.
-If no rule matches, the default action is *deny*.
+The base Zenoh wire protocol does not define:
 
-== Rule Structure
+* a portable rule grammar,
+* a standard on-wire representation for policies,
+* a mandatory rule-evaluation algorithm,
+* or a shared identity model across implementations.
 
-A rule consists of:
+What it does define is the set of operations that a local policy may gate: session establishment, declaration exchange, publication, deletion, query issuance, query replies, and related control messages.
 
-`subject`::
-Identifies the sessions the rule applies to.
-May be a TLS certificate CN/SAN, a username, or a wildcard.
+== Typical Policy Inputs
 
-`key_expr`::
-The key expression this rule covers.
-A rule matches an operation if the operation key expression intersects or is included by the rule's key expression.
+Implementations commonly base access decisions on some combination of:
 
-`flows`::
-Which data flows the rule applies to: `Ingress`, `Egress`, or both.
-
-`actions`::
-The operations governed by this rule:
-`Put`, `Delete`, `Get`, `DeclareSubscriber`, `DeclarePublisher`, `DeclareQueryable`, `DeclareToken`.
-
-`permission`::
-`Allow` or `Deny`.
-
-== Evaluation Order
-
-. Rules are evaluated in declaration order.
-. The first rule whose `subject`, `key_expr`, `flows`, and `actions` all match the operation is applied.
-. If no rule matches, the operation is *denied* by default.
-
-// TODO: Define whether "intersects" or "includes" is used for key expression matching in rules.
-// TODO: Define whether rule evaluation is per-message or per-declaration.
+* transport-layer identities such as certificate subjects or peer keys,
+* session-layer credentials exchanged via the `Auth` extension,
+* key expressions and operation type,
+* traffic direction (ingress vs egress),
+* deployment-specific tenancy, region, or routing metadata.
 
 == Configuration
 
 Access control rules are configured out-of-band (e.g., in a configuration file or management API).
-The exact configuration format is implementation-defined; this specification defines the rule model and evaluation semantics only.
+The exact configuration format and evaluation semantics are implementation-defined and out of scope for the base protocol specification.

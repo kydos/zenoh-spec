@@ -3,40 +3,51 @@
 
 == Assets
 
-// TODO: Define the assets being protected:
-//   - Confidentiality of published data
-//   - Integrity of published data and control messages
-//   - Availability of the network (protection against disruption)
-//   - Identity of nodes (protection against impersonation)
-//   - Authorisation decisions (protection against privilege escalation)
+The primary assets considered by this specification are:
+
+* confidentiality of data and control traffic when secure transports are used,
+* integrity of transport/session/network/data messages,
+* peer identity during session establishment,
+* correctness of local authorization decisions,
+* availability of established sessions and discovery flows.
 
 == Trust Boundaries
 
-// TODO: Define trust boundaries:
-//   - Trusted: the local node process
-//   - Semi-trusted: authenticated peers within the same administrative domain
-//   - Untrusted: unauthenticated or external nodes
+Zenoh deployments typically cross the following trust boundaries:
+
+* the local node process and its local configuration,
+* authenticated peers within an administrative domain,
+* unauthenticated or partially trusted peers reachable on the transport network,
+* intermediate networks and links that may be observed or modified unless protected by a secure transport.
 
 == In-Scope Threats
 
-// TODO: List threats addressed by this specification:
-//   - Eavesdropping on data in transit
-//   - Man-in-the-middle attacks on session establishment
-//   - Unauthorised publishing or subscribing
-//   - Rogue router injection
-//   - Replay attacks (via HLC timestamps on data)
+This specification, together with secure transport and local policy enforcement, is intended to help address:
+
+* eavesdropping on links protected by TLS/QUIC or equivalent secure transports,
+* active tampering with traffic on authenticated secure links,
+* impersonation during session establishment when transport- or session-layer authentication is enabled,
+* unauthorized publish/query/declaration activity rejected by local access-control policy,
+* replay of stale session-establishment state through the INIT/OPEN cookie mechanism.
 
 == Out-of-Scope Threats
 
-// TODO: Explicitly list threats this specification does NOT address:
-//   - Physical access to devices
-//   - Side-channel attacks
-//   - Compromise of the trusted node process itself
-//   - Denial-of-service at the IP layer
+The following are out of scope for the base wire specification:
+
+* physical compromise of devices or the trusted local process,
+* operating-system, runtime, or side-channel attacks,
+* IP-layer or link-layer denial of service,
+* traffic analysis on otherwise encrypted links,
+* key management, PKI provisioning, and secret distribution,
+* application-specific misuse of opaque payloads or attachments.
 
 == Security Assumptions
 
-// TODO: State the cryptographic and infrastructure assumptions the security model relies on:
-//   - TLS certificate chain validation
-//   - Secure key management (out of scope for this specification)
-//   - Correct system clock (for HLC replay protection)
+The security properties described here rely on the following assumptions:
+
+* secure transports correctly validate peer credentials and protect link confidentiality/integrity,
+* implementations correctly validate message syntax, lengths, and extension chains,
+* local policy engines are configured with the intended trust anchors and authorization rules,
+* secret management and credential provisioning are handled securely outside the base protocol.
+
+Timestamps help ordering and conflict resolution, but they are not by themselves a cryptographic anti-replay mechanism for arbitrary application data.

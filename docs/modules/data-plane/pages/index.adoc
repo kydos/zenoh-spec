@@ -15,7 +15,7 @@ Publisher         Router(s)          Subscriber
 ----
 
 A xref:push.adoc[PUSH] message delivers a value (PUT) or a deletion notification (DEL) to all matching subscribers.
-PUSH messages are carried inside FRAME transport messages.
+On the default transport it is carried inside a FRAME transport message; negotiated low-latency unicast may serialize the network message directly.
 
 == Query/Reply Flow
 
@@ -41,5 +41,7 @@ Transport:  FRAME (seq_num, channel)
 Network:      PUSH / REQUEST / RESPONSE / RESPONSE_FINAL
 Data:           PUT / DEL / QUERY / REPLY / ERR
 ----
+
+In negotiated low-latency unicast mode, the transport layer may serialize the network message directly instead of wrapping it in FRAME/FRAGMENT.
 
 See xref:wire:message-format.adoc[] for the complete byte-level reference.

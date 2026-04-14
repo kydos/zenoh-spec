@@ -10,6 +10,7 @@ Its responsibilities are:
 * xref:batching.adoc[Batching] multiple network messages into a single FRAME to reduce per-message overhead.
 * xref:fragmentation.adoc[Fragmenting] large messages that exceed the link MTU across multiple FRAGMENT messages.
 * Sending xref:keep-alive.adoc[KEEP_ALIVE] messages to detect link and session failures.
+* Carrying transport- and link-scoped OAM payloads via `OAM`.
 
 == Transport Message IDs
 
@@ -17,6 +18,7 @@ Its responsibilities are:
 |===
 |ID (hex) |Message |Scope |Purpose
 
+|0x00 |OAM       |Both |Operations, administration, and management payload
 |0x01 |INIT      |Unicast only |Session parameter negotiation (SYN/ACK)
 |0x02 |OPEN      |Unicast only |Session activation (SYN/ACK with cookie)
 |0x03 |CLOSE     |Both |Session or link termination
@@ -29,7 +31,8 @@ Its responsibilities are:
 == Transport vs. Network Layer
 
 The transport layer is concerned with _how_ bytes move between two directly connected nodes.
-Network messages (PUSH, REQUEST, RESPONSE, DECLARE, INTEREST) are carried as payloads inside FRAME messages and never appear directly in a batch.
+On the default "universal" transport, network messages are carried as payloads inside FRAME or FRAGMENT messages.
+In negotiated low-latency unicast mode, `zenoh-rust` uses a reduced transport codec in which network messages, `KEEP_ALIVE`, and `CLOSE` are serialized directly without FRAME/FRAGMENT batching.
 
 == Unicast vs. Multicast
 
@@ -41,3 +44,9 @@ On _multicast_ links (UDP multicast, UDP broadcast), no handshake is needed; eac
 Zenoh supports _multilink_ sessions: a single logical session may be carried over multiple simultaneous transport links.
 Multilink support is negotiated during INIT via the MultiLink extension.
 See xref:session:open-accept.adoc#_init_extensions[INIT Extensions].
+
+== Low-Latency Unicast
+
+Low-latency mode is negotiated with the `LowLatency` transport extension during INIT and OPEN.
+It trades batching and fragmentation support for lower per-message overhead.
+The validated `zenoh-rust` baseline treats low-latency mode and QoS transport lanes as mutually exclusive session modes.

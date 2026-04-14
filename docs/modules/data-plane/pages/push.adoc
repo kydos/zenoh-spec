@@ -13,12 +13,14 @@ A complete publication on the wire consists of three layers:
 
 ----
 [Transport layer]
-  FRAME (0x05) with seq_num + QoS extension
+  FRAME (0x05) with seq_num + QoS extension   [default transport]
     [Network layer]
       PUSH (0x1D) with key_expr + extensions
         [Data layer]
           PUT (0x01) or DEL (0x02) with payload + extensions
 ----
+
+In negotiated low-latency unicast mode, the PUSH network message may be serialized directly by the transport instead of being wrapped in FRAME.
 
 == PUSH Network Message (0x1D)
 
@@ -113,7 +115,7 @@ Flags:
 
 |0x1 |ZBuf |N |**SourceInfo** — identifies the originating publisher
 |0x2 |Unit |Y |**Shm** — shared-memory flag (feature-gated; present implies SHM-capable receiver)
-|0x3 |ZBuf |N |**Attachment** — user-defined key/value metadata
+|0x3 |ZBuf |N |**Attachment** — opaque user attachment buffer
 |===
 
 == DEL Data Sub-Message (0x02)
@@ -155,7 +157,7 @@ Flags:
 |Ext ID |Type |M |Extension
 
 |0x1 |ZBuf |N |**SourceInfo** — identifies the originating publisher
-|0x2 |ZBuf |N |**Attachment** — user-defined key/value metadata
+|0x2 |ZBuf |N |**Attachment** — opaque user attachment buffer
 |===
 
 NOTE: DEL Attachment is at ID=0x2, whereas PUT Attachment is at ID=0x3.
@@ -185,25 +187,17 @@ ZBuf payload:
 
 === Attachment (ZBuf)
 
-User-defined key/value metadata attached to a data message.
-The ZBuf payload is:
-
-----
-% num_pairs : z32 %   VLE — number of key/value pairs
-For each pair:
-  ~ key: <u8;z16> ~   key bytes
-  ~ val: <u8;z32> ~   value bytes
-----
-
-The keys and values are opaque bytes; their interpretation is application-defined.
+User-defined attachment bytes associated with the data message.
+On the wire this extension is an opaque `ZBuf`; the base protocol does not impose any internal schema on the attachment payload.
+Implementations may choose to encode structured metadata inside it, but such structure is a convention above the wire layer rather than a field understood by the core codec.
 
 === Shm (Unit, M=true, ID=0x2)
 
 A zero-payload extension that signals the associated data payload resides in shared memory.
-Only meaningful between processes on the same host.
+Only emitted by implementations built with shared-memory support and only meaningful between processes on the same host.
 Presence implies the receiver MUST understand shared-memory access; if it does not, it MUST reject the message (`M=true`).
 
-== Complete PUSH → PUT Wire Layout
+== Complete PUSH → PUT Wire Layout (Default Transport)
 
 For implementors: the full wire layout for a TCP-framed PUSH→PUT message is:
 

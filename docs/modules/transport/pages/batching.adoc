@@ -30,7 +30,8 @@ Default batch size: 65 535 bytes (the maximum addressable by the u16 length pref
 
 == FRAME Transport Message
 
-All NetworkMessages MUST be carried inside a FRAME transport message, never placed directly in a batch.
+On the default "universal" transport, NetworkMessages are carried inside a FRAME transport message and are not placed directly in a batch.
+In negotiated low-latency unicast mode, batching is disabled and the transport may serialize a NetworkMessage directly instead.
 
 ----
  7 6 5 4 3 2 1 0
@@ -59,6 +60,8 @@ A sender accumulates NetworkMessages into the current batch and flushes when one
 . A configurable coalescing timer expires.
 
 The `E` (Express) flag is defined in the network-level xref:wire:message-format.adoc#_common_network_extensions[QoS extension].
+
+Low-latency unicast bypasses these batching rules because it does not use FRAME aggregation.
 
 == QoS Priority Lanes
 

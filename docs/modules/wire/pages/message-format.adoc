@@ -3,6 +3,7 @@
 
 This page is the normative byte-level reference for all Zenoh messages.
 For primitive encoding types (`z8`, `z32`, VLE, ZenohID, etc.) see xref:primitives.adoc[].
+Scouting messages are specified in xref:scouting:index.adoc[].
 
 == Message ID Ranges
 
@@ -22,6 +23,7 @@ On stream-oriented transports (TCP) each transport message is preceded by a 2-by
 |===
 |Message |ID (dec) |ID (hex) |Scope
 
+|OAM       |0 |0x00 |Both
 |INIT      |1 |0x01 |Unicast only
 |OPEN      |2 |0x02 |Unicast only
 |CLOSE     |3 |0x03 |Both
@@ -29,6 +31,33 @@ On stream-oriented transports (TCP) each transport message is preceded by a 2-by
 |FRAME     |5 |0x05 |Both
 |FRAGMENT  |6 |0x06 |Both
 |JOIN      |7 |0x07 |Multicast only
+|===
+
+=== OAM — Transport Operations / Administration / Management (0x00)
+
+Transport OAM carries transport-scoped management payloads.
+The header uses the standard extension encoding bits to select whether the OAM body is `Unit`, `Z64`, or `ZBuf`.
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|ENC|  OAM    |   ID = 0x00
++-+-+-+---------+
+%    id : z16   %   OAM identifier
++---------------+
+~  [oam_exts]   ~   if Z==1
++---------------+
+~     body      ~   body encoding selected by ENC
++---------------+
+----
+
+Transport OAM extensions:
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64 |Y |QoS priority lane for this OAM message
 |===
 
 === INIT — Session Initialisation (0x01)
@@ -210,7 +239,8 @@ When the QoS extension is present, per-priority SNs in the extension supersede t
 == Network Messages
 
 Network messages carry application-layer semantics.
-They are serialised inside Transport FRAME or FRAGMENT payloads and MUST NOT be sent directly over a link.
+On the default transport they are serialised inside Transport FRAME or FRAGMENT payloads.
+On negotiated low-latency unicast sessions, implementations may serialize a network message directly using the reduced transport codec described in xref:frame-format.adoc[].
 
 [cols="1,1,1,3"]
 |===
@@ -222,6 +252,35 @@ They are serialised inside Transport FRAME or FRAGMENT payloads and MUST NOT be 
 |REQUEST       |28 |0x1C |Query a key expression
 |PUSH          |29 |0x1D |Publish data or deletion to a key expression
 |DECLARE       |30 |0x1E |Announce or retract resources (subscribers, queryables, etc.)
+|OAM           |31 |0x1F |Operations, administration, and management payload
+|===
+
+=== OAM (0x1F)
+
+Network OAM carries management payloads scoped to the network-message layer.
+As with transport OAM, the header encoding bits select whether the body is `Unit`, `Z64`, or `ZBuf`.
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|ENC|  OAM    |   ID = 0x1F
++-+-+-+---------+
+%    id : z16   %   OAM identifier
++---------------+
+~  [oam_exts]   ~   if Z==1
++---------------+
+~     body      ~   body encoding selected by ENC
++---------------+
+----
+
+Network OAM extensions:
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64  |N |QoS
+|0x2 |ZBuf |N |Timestamp
 |===
 
 === Common Network Extensions
@@ -492,7 +551,7 @@ Flags: `C` (Consolidation, bit 5); `P` (Parameters, bit 6); `Z` (bit 7).
  +---------------+
  ~ ps: <u8;z16>  ~   if P==1: query parameters (UTF-8)
  +---------------+
- ~  [qry_exts]   ~   if Z==1 (SourceInfo, QueryBody, Shm, Attachment)
+ ~  [qry_exts]   ~   if Z==1 (SourceInfo, QueryBody, Attachment)
  +---------------+
 ----
 
@@ -529,3 +588,13 @@ Flags: `E` (Encoding, bit 6); `Z` (bit 7).
  ~ pl: <u8;z32>  ~   Error payload bytes
  +---------------+
 ----
+
+== Attachment and QueryBody Notes
+
+`Attachment`::
+On the wire, Attachment extensions are carried as opaque `ZBuf` values.
+Implementations may choose to encode structured metadata inside that buffer, but the protocol layer itself does not impose a key/value schema.
+
+`QueryBody`::
+The QUERY body extension is a `ValueType` payload at extension ID `0x03`.
+When shared-memory support is enabled, its optional SHM marker is encoded as the secondary extension ID `0x04` inside that `ValueType`, rather than as an unrelated top-level QUERY extension.

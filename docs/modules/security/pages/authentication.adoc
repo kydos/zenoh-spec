@@ -1,40 +1,36 @@
 = Authentication
 :description: Authentication mechanisms available during Zenoh session establishment.
 
-Authentication verifies the identity of a node before a session is allowed to proceed.
-Zenoh supports both transport-layer and session-layer authentication.
+Authentication verifies the identity or credentials of a peer before a session is allowed to proceed.
+Zenoh supports both transport-layer authentication and a session-layer authentication exchange carried by INIT/OPEN extensions.
 
 == Transport-Layer Authentication (TLS / QUIC)
 
-When a TLS or QUIC link is used, mutual TLS (mTLS) provides strong authentication via X.509 certificates.
+When a TLS- or QUIC-based locator is used, the underlying secure transport may authenticate the remote peer, typically with X.509 certificates.
 
-* The server certificate is always validated by the client.
-* The client certificate is optional (`ext_auth` not required) but RECOMMENDED for production deployments.
-* The Subject or Subject Alternative Name (SAN) of the peer certificate is available to the access control layer.
+* Certificate validation rules are defined by the chosen transport/security stack, not by the Zenoh message format.
+* Mutual authentication is deployment-specific: some deployments authenticate only the server side, others require both peers to present credentials.
+* How certificate attributes are mapped into local identities for policy decisions is implementation-defined.
 
-// TODO: Define which certificate attributes are extracted and how they map to access control subjects.
+== Session-Layer Authentication (`Auth` Extension)
 
-== Session-Layer Authentication (ext_auth)
+The `Auth` extension is present at extension ID `0x3` in INIT and OPEN.
+It is encoded as `ZBuf` and is opaque to the base protocol: the wire format standardizes only where those bytes appear, not how they are interpreted.
 
-The `ext_auth` extension in xref:session:open-accept.adoc[Open/Accept] carries authentication material at the session layer, independent of the transport.
-
-// TODO: Define the ext_auth extension wire format and the supported authentication methods:
-//   - Username / Password (HMAC-based challenge-response)
-//   - Pre-shared key (PSK)
-//   - Token (e.g., JWT bearer token)
+An implementation may use this payload for challenge/response exchanges, bearer tokens, proof-of-possession data, or other deployment-specific mechanisms.
+The responder may include `Auth` data in `InitAck` and/or `OpenAck`, or abort the handshake with xref:session:close.adoc[CLOSE] if authentication fails.
 
 === Handshake Flow
 
 [source]
 ----
-Initiator                       Responder
-    |── Open + ext_auth(init) ──>|
-    |<── Accept + ext_auth(resp) |  (or Close)
+Initiator                               Responder
+    |── INIT / OPEN + Auth payload ────>|
+    |<── INIT / OPEN + Auth payload ────|  (or CLOSE)
 ----
-
-// TODO: Define the challenge/response fields and MAC algorithm.
 
 == Combining Mechanisms
 
 Transport-layer and session-layer authentication may be used simultaneously.
-Access control decisions MAY use identity from either layer.
+Access control decisions MAY use identity material derived from either layer.
+The protocol does not require one layer to subsume the other.

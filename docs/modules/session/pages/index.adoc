@@ -18,7 +18,8 @@ A                           B
 |          OPEN ACK  (A=1)  |   confirm; session is now active
 |<─────────────────────────|
 |                           |
-|  FRAME (network messages) |
+|  FRAME / direct network   |   low-latency sessions may skip FRAME batching
+|  messages                 |
 |<────────────────────────>|
 |  KEEP_ALIVE               |   every lease/4
 |<────────────────────────>|

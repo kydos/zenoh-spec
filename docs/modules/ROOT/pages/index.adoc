@@ -50,3 +50,5 @@ Implementors should pay close attention to the xref:wire:index.adoc[Wire Format]
 
 This document specifies Zenoh protocol version *{spec-version}*.
 It is maintained by the https://zenoh.io[Eclipse Zenoh] project.
+This revision was derived from the legacy Zenoh protocol notes and then revalidated against the current `zenoh-rust` protocol definitions and codecs, with `zenoh-pico` used as an additional interoperability reference.
+When older prose and the current implementations disagree on message layouts, extension IDs, or negotiation behaviour, this document follows the validated wire behaviour.

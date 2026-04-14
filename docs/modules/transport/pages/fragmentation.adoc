@@ -2,6 +2,7 @@
 :description: How Zenoh splits large NetworkMessages across multiple FRAGMENT transport messages.
 
 When a serialised NetworkMessage is too large to fit in a single FRAME (exceeds the negotiated batch size), it MUST be fragmented across multiple FRAGMENT transport messages.
+This applies to the default "universal" transport; negotiated low-latency unicast does not use FRAGMENT.
 
 == Overview
 

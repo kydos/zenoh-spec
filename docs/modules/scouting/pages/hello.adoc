@@ -43,7 +43,7 @@ Flags:
 
  7 6 5 4 3 2 1 0
 +-+-+-+-+-+-+-+-+
-|Z|X|L|  HELLO  |
+|Z|X|L|  HELLO  |   ID = 0x02
 +-+-+-+---------+
 |    version    |   Protocol version (u8); current value: 0x09
 +---------------+
@@ -96,13 +96,15 @@ Flags:
 
 === Locator Format
 
-Locators follow the format `protocol/address:port`, for example:
+Locators follow the canonical form `<proto>/<address>[?<metadata>]`, for example:
 
 ----
 tcp/192.168.1.1:7447
 udp/224.0.0.224:7447
 tls/192.168.1.1:7448
 tcp/[::1]:7447
+quic/example.net:7447?iface=en0
 ----
 
-Protocol tokens are case-insensitive.  The address portion may be an IPv4 address, an IPv6 address in brackets, or a hostname.
+The address portion may be an IPv4 address, an IPv6 address in brackets, or a hostname.
+When metadata is present it is carried after `?` as semicolon-separated `key=value` pairs.

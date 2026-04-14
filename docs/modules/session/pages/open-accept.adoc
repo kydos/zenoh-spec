@@ -32,7 +32,8 @@ A                           B
 |          OPEN ACK  (A=1)  |   confirm; propose own lease + initial_sn
 |<─────────────────────────|
 |                           |
-|  FRAME (network msgs)     |   session is live
+|  FRAME / direct network   |   session is live
+|  messages                 |   low-latency mode skips FRAME batching
 |<────────────────────────>|
 ----
 
@@ -132,11 +133,12 @@ The cookie is used for replay prevention and optionally carries cryptographic st
 |===
 |Ext ID |Type |M |Extension
 
-|0x1 |Unit |N |**QoS** — declares QoS priority-lane support
-|0x1 |Z64  |N |**QoSLink** — multilink QoS info (same ID, distinguished by ENC bits)
-|0x3 |ZBuf |N |**Auth** — authentication challenge/response payload
-|0x4 |ZBuf |N |**MultiLink** — multilink probe
-|0x5 |Unit |N |**LowLatency** — requests low-latency mode (disables batching)
+|0x1 |Unit |N |**QoS** — negotiates QoS transport lanes
+|0x1 |Z64  |N |**QoSLink** — multilink QoS metadata (same numeric ID, different encoding)
+|0x2 |ZBuf |N |**Shm** — shared-memory capability probe; emitted only by implementations built with shared-memory support
+|0x3 |ZBuf |N |**Auth** — opaque authentication payload exchanged by the implementation
+|0x4 |ZBuf |N |**MultiLink** — multilink probe payload
+|0x5 |Unit |N |**LowLatency** — requests low-latency unicast mode
 |0x6 |Unit |N |**Compression** — requests link-level compression
 |0x7 |Z64  |N |**Patch** — protocol patch version (u8 encoded as z64)
 |0x8 |ZBuf |N |**RegionName** — administrative region identifier
@@ -149,6 +151,7 @@ The cookie is used for replay prevention and optionally carries cryptographic st
 
 NOTE: Extensions 0x1 (QoS) and 0x1 (QoSLink) share the same ID but differ by `ENC` bits in the extension header (`Unit` vs `Z64`).
 Receivers MUST distinguish them by `ENC`.
+The `Shm` extension is feature-gated in the current implementations and is absent when shared-memory support is not compiled in.
 
 == OPEN Message (0x02)
 
@@ -196,6 +199,7 @@ The proposed lease duration for the session.
 Both sides propose a lease; the effective lease is the minimum of the two values.
 The session expires if no message (including KEEP_ALIVE) is received within the effective lease period.
 See xref:transport:keep-alive.adoc[].
+When low-latency mode is negotiated, OPEN still carries the same lease fields; only the post-handshake transport codec changes.
 
 === Initial Sequence Number
 
@@ -208,13 +212,13 @@ MUST fall within the range `[0, 2^FSN_bits − 1]` where `FSN_bits` is determine
 |===
 |Ext ID |Type |M |Extension
 
-|0x1 |Unit |N |**QoS** — confirms QoS use
-|0x2 |Z64  |N |**Shm** — shared-memory response
-|0x3 |ZBuf |N |**Auth** — authentication response
-|0x4 |ZBuf |N |**MultiLink** syn challenge
+|0x1 |Unit |N |**QoS** — confirms QoS transport-lane use
+|0x2 |Z64  |N |**Shm** — shared-memory probe response; emitted only by implementations built with shared-memory support
+|0x3 |ZBuf |N |**Auth** — opaque authentication payload
+|0x4 |ZBuf |N |**MultiLinkSyn** — multilink challenge/payload
 |0x5 |Unit |N |**LowLatency** — confirms low-latency mode
 |0x6 |Unit |N |**Compression** — confirms compression
-|0x7 |Z64  |N |**RemoteBound** — indicates the remote is on the south bound
+|0x7 |Z64  |N |**RemoteBound** — implementation-defined south-bound routing hint
 |===
 
 === OpenAck Extensions
@@ -223,13 +227,13 @@ MUST fall within the range `[0, 2^FSN_bits − 1]` where `FSN_bits` is determine
 |===
 |Ext ID |Type |M |Extension
 
-|0x1 |Unit |N |**QoS** — QoS accepted
-|0x2 |Z64  |N |**Shm** — shared-memory response
-|0x3 |ZBuf |N |**Auth** — authentication complete
-|0x4 |Unit |N |**MultiLink** ack
-|0x5 |Unit |N |**LowLatency** accepted
-|0x6 |Unit |N |**Compression** accepted
-|0x7 |Z64  |N |**RemoteBound**
+|0x1 |Unit |N |**QoS** — QoS transport lanes accepted
+|0x2 |Z64  |N |**Shm** — shared-memory probe response; emitted only by implementations built with shared-memory support
+|0x3 |ZBuf |N |**Auth** — opaque authentication payload
+|0x4 |Unit |N |**MultiLinkAck** — multilink acknowledgement
+|0x5 |Unit |N |**LowLatency** — low-latency mode accepted
+|0x6 |Unit |N |**Compression** — compression accepted
+|0x7 |Z64  |N |**RemoteBound** — implementation-defined south-bound routing hint
 |===
 
 == Parameter Negotiation Rules
@@ -244,7 +248,10 @@ MUST fall within the range `[0, 2^FSN_bits − 1]` where `FSN_bits` is determine
 |Lease |Effective value = min(OpenSyn, OpenAck)
 |Initial SN |Each side uses its own proposed value as its starting SN
 |QoS lanes |Supported only if both sides include the QoS extension
+|Transport style |FRAME/FRAGMENT transport is used by default; direct network-message transport is used only if both sides include `LowLatency`
 |===
+
+For interoperability with the validated `zenoh-rust` baseline, a unicast session does not combine `LowLatency` and QoS transport lanes on the same link.
 
 == Session Teardown
 

@@ -15,7 +15,7 @@ A successful reply consists of:
 
 ----
 [Transport layer]
-  FRAME (0x05)
+  FRAME (0x05)   [default transport]
     [Network layer]
       RESPONSE (0x1B) with request_id + key_expr + extensions
         [Data layer]
@@ -27,6 +27,8 @@ Followed by (one per source):
   FRAME
     RESPONSE_FINAL (0x1A) with request_id
 ----
+
+In negotiated low-latency unicast mode, the RESPONSE or RESPONSE_FINAL network message may be serialized directly by the transport instead of being wrapped in FRAME.
 
 An error reply substitutes ERR for REPLY:
 
@@ -217,7 +219,7 @@ Flags:
 |0x2 |Unit |Y |**Shm** — shared-memory flag (feature-gated)
 |===
 
-== Complete RESPONSE → REPLY → PUT Wire Layout
+== Complete RESPONSE → REPLY → PUT Wire Layout (Default Transport)
 
 ----
 [u16 LE]                    TCP length prefix
@@ -244,7 +246,7 @@ Then (separate FRAME):
   [rf_exts]                 QoS, Timestamp
 ----
 
-== Complete RESPONSE → ERR Wire Layout
+== Complete RESPONSE → ERR Wire Layout (Default Transport)
 
 ----
 [RESPONSE header]           Z|M|N|0x1B

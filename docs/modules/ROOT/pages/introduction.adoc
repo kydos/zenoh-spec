@@ -1,7 +1,8 @@
 = Introduction
 :description: Goals, design principles, and motivation for the Zenoh protocol.
 
-Zenoh unifies _data in motion_, _data at rest_, and _computations_ in a single coherent protocol designed to span the full compute continuum — from deeply embedded microcontrollers to cloud services.
+https://zenoh.io[Zenoh] unifies _data in motion_, _data at rest_, and _computations_ in a single coherent protocol designed to span the full compute continuum — from deeply embedded microcontrollers to cloud services.
+This revision of the specification is derived from the historical markdown specification and validated primarily against the current https://github.com/ecplipse-zenoh[zenoh-rust] implementation, with https://github.com/ecplipse-zenoh/zenoh-pico[zenoh-pico] and https://github.com/ecplipse-zenoh/zenoh-nostd[zenoh-nostd] used as a secondary implementation reference.
 
 == Motivation
 
@@ -24,8 +25,8 @@ The key-expression wildcard matching system and lazy-declaration model (via Inte
 *Ultra-low wire overhead*:: Variable-length integer encoding (LEB128) throughout, compact packed headers, and optional field presence flags minimise byte counts.
 No mandatory framing overhead beyond a single header byte per message.
 
-*No-alloc / no-std compatibility*:: The wire format was co-designed with an embedded implementation (`zenoh-nostd`) that requires no dynamic memory allocation to parse or emit messages.
-Fixed-layout fields and self-delimiting VLE encodings enable zero-copy parsing on bare-metal targets.
+*No-alloc / no-std compatibility*:: The wire format is suitable for constrained implementations and remains compatible with embedded stacks such as `zenoh-pico`.
+Fixed-layout fields and self-delimiting VLE encodings enable zero-copy parsing and bounded-memory implementations on bare-metal targets.
 
 *Topology independence*:: Zenoh supports peer-to-peer, brokered (router-centric), and hybrid topologies without wire-format changes.
 The same protocol runs over TCP unicast, UDP multicast, TLS, QUIC, and serial links.
@@ -53,14 +54,15 @@ This specification does not:
 
 ┌────────────────────────────────────────┐
 │           Transport Layer              │  INIT / OPEN / CLOSE / KEEP_ALIVE
-│    (session setup, reliability,        │  FRAME / FRAGMENT / JOIN
+│    (session setup, reliability,        │  FRAME / FRAGMENT / JOIN / OAM
 │     flow control, fragmentation)       │  (TCP unicast / UDP multicast)
 └────────────────────────────────────────┘
-         │  carries inside FRAME/FRAGMENT │
+         │  usually carried inside FRAME/FRAGMENT
+         │  low-latency unicast may carry Network messages directly
 ┌────────────────────────────────────────┐
 │            Network Layer               │  PUSH / REQUEST / RESPONSE /
-│    (pub/sub/query semantics,           │  RESPONSE_FINAL / DECLARE / INTEREST
-│     key expressions, declarations)     │
+│    (pub/sub/query semantics,           │  RESPONSE_FINAL / DECLARE /
+│     key expressions, declarations)     │  INTEREST / OAM
 └────────────────────────────────────────┘
          │  carried as message payloads  │
 ┌────────────────────────────────────────┐
@@ -73,7 +75,9 @@ This specification does not:
 == Protocol Version
 
 This document specifies Zenoh protocol version *9* (`0x09`).
-All messages carry a version byte; nodes MUST reject messages with an unrecognised version.
+The version byte appears on the scouting messages (`SCOUT`, `HELLO`) and on the transport bootstrap messages that establish compatibility (`INIT`, `JOIN`).
+Once a session has been established, subsequent transport, network, and data messages do not carry a standalone version byte and are interpreted in the context of the negotiated session state.
+Nodes MUST reject bootstrap messages with an unrecognised version.
 
 == Terminology
 

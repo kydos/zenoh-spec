@@ -1,6 +1,11 @@
 = Changelog
 :description: Version history and notable changes to the Zenoh protocol specification.
 
+== Validation Refresh
+
+This edition aligns the specification with the current `zenoh-rust` wire definitions and codecs, with `zenoh-pico` used as an additional interoperability reference.
+It corrects scouting message IDs, documents transport and network OAM messages, records the low-latency unicast transport mode, updates locator canonical form, and clarifies INIT/OPEN, JOIN, QUERY, and Attachment semantics.
+
 == Initial Release
 
 _First public release of the Zenoh Protocol Specification._

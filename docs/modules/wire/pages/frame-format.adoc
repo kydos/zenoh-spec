@@ -40,10 +40,10 @@ A receiver MUST process messages in the order they appear.
 
 === Transport Messages vs Network Messages
 
-A batch may contain _transport messages_ (INIT, OPEN, CLOSE, KEEP_ALIVE, FRAME, FRAGMENT, JOIN) encoded directly.
+A batch may contain _transport messages_ (OAM, INIT, OPEN, CLOSE, KEEP_ALIVE, FRAME, FRAGMENT, JOIN) encoded directly.
 
-_Network messages_ (PUSH, REQUEST, RESPONSE, RESPONSE_FINAL, DECLARE, INTEREST) are NEVER placed directly in a batch.
-They MUST be carried inside a FRAME or FRAGMENT transport message.
+On the default "universal" transport, _network messages_ (PUSH, REQUEST, RESPONSE, RESPONSE_FINAL, DECLARE, INTEREST, OAM) are carried inside a FRAME or FRAGMENT transport message.
+When low-latency unicast mode has been negotiated during INIT/OPEN, the reduced transport codec used by `zenoh-rust` serializes `NetworkMessage`, `KEEP_ALIVE`, and `CLOSE` directly without FRAME/FRAGMENT batching.
 
 === FRAME — Network Message Container
 
@@ -88,6 +88,18 @@ This allows the transport layer to select among multiple sequence-number lanes o
 |   priority    |   bits 2:0 — priority class (0=Control, 5=Data default, 7=Background)
 +-+-+-+---------+
 ----
+
+=== Low-Latency Unicast
+
+Low-latency mode is negotiated during the INIT/OPEN exchange.
+In that mode the link-level framing is unchanged, but the transport payload is no longer a FRAME/FRAGMENT container.
+Instead, the transport codec admits a reduced message set:
+
+----
+LowLatencyPayload = NetworkMessage / KEEP_ALIVE / CLOSE
+----
+
+No frame sequence numbers are attached to those directly serialized network messages, and FRAGMENT is not used on that link.
 
 == Message Ordering
 

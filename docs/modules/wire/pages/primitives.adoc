@@ -129,15 +129,45 @@ Value       Encoded bytes         Notes
 
 Strings MUST be valid UTF-8.
 
-=== List of UTF-8 strings
+[[locator]]
+== Locator
 
-Used to encode locator lists (e.g., in HELLO messages):
+A `Locator` is encoded as a canonical UTF-8 string using the `<utf8;z8>` primitive above.
+
+Canonical form:
 
 ----
-% count  : z8  %   VLE-encoded number of strings that follow
-~  string 1    ~   each string is <utf8;z8>
-~  string 2    ~
-~     ...      ~
+<proto>/<address>[?<metadata>]
+----
+
+`proto`::
+Lower-layer transport or link protocol identifier such as `tcp`, `udp`, `tls`, or `quic`.
+
+`address`::
+Transport-specific address string, for example `192.168.1.10:7447`, `[2001:db8::1]:7447`, or `localhost:7447`.
+
+`metadata` (optional)::
+Semicolon-separated `key=value` pairs.
+In canonical form the keys are sorted lexicographically.
+
+Examples:
+
+----
+tcp/192.168.1.10:7447
+udp/224.0.0.224:7447
+tcp/[2001:db8::1]:7447
+quic/example.net:7447?iface=en0
+----
+
+=== List of Locators
+
+Used to encode locator lists (for example in HELLO messages):
+
+----
+% count  : z8  %   VLE-encoded number of locators that follow
+~ locator 1    ~   each locator is encoded as <utf8;z8>
+~ locator 2    ~
+~    ...       ~
 ----
 
 [[zenohid]]
