@@ -1,27 +1,15 @@
 = Changelog
 :description: Version history and notable changes to the Zenoh protocol specification.
 
-== v2.0.0
+== Initial Release
 
-_Initial release of the Zenoh v2.0.0 protocol specification._
+_First public release of the Zenoh Protocol Specification._
 
-=== Breaking Changes from v1
+This document establishes the normative wire-level specification for the Zenoh protocol, covering:
 
-// TODO: Document wire-format and semantic breaking changes, e.g.:
-//   - Revised message header encoding
-//   - Changed session Open/Accept field layout
-//   - New declaration model replacing resource declarations
-
-=== New Features
-
-// TODO: Document additions in v2.0.0, e.g.:
-//   - Wildcard Interests and FinalInterest messages for late-join consistency
-//   - Liveliness Tokens
-//   - Publisher declaration with QoS hints
-//   - Revised WireExpr / key expression aliasing
-//   - Compression extension (ext_compression)
-//   - Low-latency mode extension (ext_lowlatency)
-
-=== Deprecations
-
-// TODO: Document deprecated features and recommended replacements.
+* Encoding primitives (VLE, ZenohID, WireExpr, Extensions)
+* Scouting layer (SCOUT, HELLO)
+* Transport layer (INIT, OPEN, CLOSE, KEEP_ALIVE, FRAME, FRAGMENT, JOIN)
+* Session layer (declarations, interests)
+* Network layer (PUSH, REQUEST, RESPONSE, RESPONSE_FINAL, DECLARE, INTEREST)
+* Data plane (PUT, DEL, QUERY, REPLY, ERR)
