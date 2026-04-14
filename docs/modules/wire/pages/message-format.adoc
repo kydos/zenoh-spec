@@ -1,0 +1,531 @@
+= Message Reference
+:description: Normative byte-level encoding for every Zenoh message type, grouped by protocol layer.
+
+This page is the normative byte-level reference for all Zenoh messages.
+For primitive encoding types (`z8`, `z32`, VLE, ZenohID, etc.) see xref:primitives.adoc[].
+
+== Message ID Ranges
+
+Transport message IDs occupy `0x00`–`0x07`; network message IDs occupy `0x19`–`0x1F`.
+These ranges are deliberately non-overlapping so that a receiver can identify the layer without additional context.
+
+Data sub-message IDs (`0x01`–`0x05`) are scoped to the body of the enclosing PUSH, REQUEST, or RESPONSE message.
+
+== Transport Messages
+
+Transport messages handle session establishment, lease management, reliable delivery, and message batching.
+They are exchanged directly over the underlying link before network-layer messages can flow.
+
+On stream-oriented transports (TCP) each transport message is preceded by a 2-byte little-endian length prefix (see xref:primitives.adoc#_stream_framing_tcp_length_prefix[Stream Framing]).
+
+[cols="1,1,1,3"]
+|===
+|Message |ID (dec) |ID (hex) |Scope
+
+|INIT      |1 |0x01 |Unicast only
+|OPEN      |2 |0x02 |Unicast only
+|CLOSE     |3 |0x03 |Both
+|KEEP_ALIVE|4 |0x04 |Both
+|FRAME     |5 |0x05 |Both
+|FRAGMENT  |6 |0x06 |Both
+|JOIN      |7 |0x07 |Multicast only
+|===
+
+=== INIT — Session Initialisation (0x01)
+
+INIT is exchanged as a SYN/ACK pair to negotiate session parameters.
+See xref:session:open-accept.adoc[] for the full handshake flow.
+
+Flags: `A` (Ack, bit 5) — `0` = InitSyn, `1` = InitAck; `S` (Size, bit 6) — resolution + batch_size fields present; `Z` (bit 7) — extensions follow.
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|S|A|   INIT  |   ID = 0x01
++-+-+-+---------+
+|    version    |   Protocol version (u8); current = 0x09
++---------------+
+|zid_len|X|X|WAI|   Packed byte: bits 7:4 = zid_len, bits 1:0 = WhatAmI
++-+-+-+-+-+-+-+-+
+~      ZID      ~   (1 + zid_len) bytes
++---------------+
+|X|X|X|X|RID|FSN|   if S==1: Resolution byte
++---------------+
+|   batch_lo    |   if S==1: Batch size (u16 LE)
++---------------+
+|   batch_hi    |
++---------------+
+~  <u8;z16>    ~   Cookie — InitAck (A==1) ONLY
++---------------+
+~  [InitExts]   ~   if Z==1
++---------------+
+----
+
+=== OPEN — Link Finalisation (0x02)
+
+OPEN finalises the transport link after a successful INIT exchange.
+See xref:session:open-accept.adoc[].
+
+Flags: `A` (Ack, bit 5); `T` (Time unit, bit 6) — `1` = lease in seconds, `0` = milliseconds; `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|T|A|   OPEN  |   ID = 0x02
++-+-+-+---------+
+%    lease      %   VLE-encoded lease duration (unit per T flag)
++---------------+
+% initial_sn    %   VLE-encoded initial sequence number
++---------------+
+~  <u8;z16>    ~   Cookie (OpenSyn, A==0 only) — MUST match cookie from InitAck
++---------------+
+~  [OpenExts]   ~   if Z==1
++---------------+
+----
+
+`initial_sn` MUST fall within the range of the negotiated SN resolution.
+
+=== CLOSE — Session/Link Termination (0x03)
+
+See xref:session:close.adoc[].
+
+Flags: `S` (Session, bit 5) — `1` = close whole session, `0` = close this link only; `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|S|  CLOSE  |   ID = 0x03
++-+-+-+---------+
+|    reason     |   Close reason code (u8); see xref:session:close.adoc[]
++---------------+
+~  [CloseExts]  ~   if Z==1
++---------------+
+----
+
+=== KEEP_ALIVE — Lease Renewal (0x04)
+
+See xref:transport:keep-alive.adoc[].
+
+Flags: `Z` (bit 7) only.
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X| KALIVE  |   ID = 0x04
++-+-+-+---------+
+~  [KAliveExts] ~   if Z==1
++---------------+
+----
+
+No mandatory body fields.
+
+=== FRAME — Network Message Container (0x05)
+
+FRAME batches one or more complete, serialised NetworkMessages.
+See xref:transport:batching.adoc[].
+
+Flags: `R` (Reliable, bit 5) — `1` = reliable channel; `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|R|  FRAME  |   ID = 0x05
++-+-+-+---------+
+%    seq_num    %   VLE-encoded sequence number (resolution-dependent)
++---------------+
+~  [FrameExts]  ~   if Z==1
++---------------+
+~  [NetworkMsg] ~   one or more back-to-back serialised NetworkMessages (*)
++---------------+
+----
+
+(*) NetworkMessages fill the remainder of the batch; each is self-delimiting.
+
+Frame QoS Extension (Z64, ID=0x1, M=true):
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|0|  reserved   |   bits 7:3 — reserved (zero)
+|   priority    |   bits 2:0 — priority class (0=Control … 7=Background)
++-+-+-+---------+
+----
+
+=== FRAGMENT — Large Message Fragment (0x06)
+
+See xref:transport:fragmentation.adoc[].
+
+Flags: `R` (Reliable, bit 5); `M` (More, bit 6) — `1` = more fragments follow, `0` = last fragment; `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|R| FRAGMENT|   ID = 0x06
++-+-+-+---------+
+%    seq_num    %   VLE-encoded sequence number (same space as FRAME on this channel)
++---------------+
+~  [FragExts]   ~   if Z==1
++---------------+
+~  [fragment]   ~   raw fragment bytes (remainder of the batch)
++---------------+
+----
+
+=== JOIN — Multicast Capability Advertisement (0x07)
+
+JOIN is sent periodically on multicast transports to advertise session parameters.
+No handshake is required; any node that receives a JOIN can immediately send network messages to that peer.
+See xref:transport:join.adoc[].
+
+Flags: `T` (Time unit, bit 5); `S` (Size, bit 6); `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|S|T|   JOIN  |   ID = 0x07
++-+-+-+---------+
+|    version    |   Protocol version (u8). Current: 0x09
++---------------+
+|zid_len|X|X|WAI|   Packed byte (same layout as INIT)
++-+-+-+-+-+-+-+-+
+~      ZID      ~   (1 + zid_len) bytes
++---------------+
+|X|X|X|X|RID|FSN|   if S==1: Resolution byte
++---------------+
+|   batch_lo    |   if S==1: Batch size (u16 LE)
++---------------+
+|   batch_hi    |
++---------------+
+%    lease      %   VLE-encoded lease duration (unit per T flag)
++---------------+
+% next_sn_re    %   VLE-encoded next reliable SN (default/non-QoS channel)
++---------------+
+% next_sn_be    %   VLE-encoded next best-effort SN (default channel)
++---------------+
+~  [JoinExts]   ~   if Z==1
++---------------+
+----
+
+When the QoS extension is present, per-priority SNs in the extension supersede the body SNs for their respective priorities.
+
+== Network Messages
+
+Network messages carry application-layer semantics.
+They are serialised inside Transport FRAME or FRAGMENT payloads and MUST NOT be sent directly over a link.
+
+[cols="1,1,1,3"]
+|===
+|Message |ID (dec) |ID (hex) |Purpose
+
+|INTEREST      |25 |0x19 |Request current/future declarations from a peer
+|RESPONSE_FINAL|26 |0x1A |Signal end of replies for a request
+|RESPONSE      |27 |0x1B |Carry one reply to a REQUEST
+|REQUEST       |28 |0x1C |Query a key expression
+|PUSH          |29 |0x1D |Publish data or deletion to a key expression
+|DECLARE       |30 |0x1E |Announce or retract resources (subscribers, queryables, etc.)
+|===
+
+=== Common Network Extensions
+
+The following extensions appear on multiple network messages with the same Ext IDs.
+
+==== QoS Extension (Z64, ID=0x1, M=false)
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|0|r|F|E|D|prio |   encoded as the low byte of the z64 value
++-+-+-+-+-------+
+----
+
+[cols="1,1,3"]
+|===
+|Sub-field |Bits |Meaning
+
+|`prio` |2:0 |Priority class (0–7; default = 5 = Data)
+|`D`    |3   |Don't-drop — use Block congestion control
+|`E`    |4   |Express — disable message batching for this message
+|`F`    |5   |Don't-drop-first — BlockFirst mode (Patch ≥ 1)
+|`r`    |6   |Reserved (zero)
+|       |7   |Reserved (zero)
+|===
+
+Priority values:
+
+[cols="1,2"]
+|===
+|Value |Name
+
+|0 |Control
+|1 |RealTime
+|2 |InteractiveHigh
+|3 |InteractiveLow
+|4 |DataHigh
+|5 |Data **(default)**
+|6 |DataLow
+|7 |Background
+|===
+
+Congestion control interpretation:
+
+* `D=0, F=0` → Drop (default for PUSH; messages may be lost under congestion)
+* `D=1, F=0` → Block (default for REQUEST, DECLARE, INTEREST; sender blocks until space available)
+* `D=0, F=1` → BlockFirst (first message blocks; subsequent messages dropped; requires Patch ≥ 1)
+
+==== Timestamp Extension (ZBuf, ID=0x2, M=false)
+
+ZBuf payload is a Timestamp primitive (see xref:primitives.adoc#timestamp[]).
+
+==== NodeId Extension (Z64, ID=0x3, M=true)
+
+Identifies the forwarding hop that last touched the message within a session.
+
+----
+% node_id : z64%   16-bit node identifier encoded as z64
+                   (0 = generated by this node; not forwarded)
+----
+
+=== PUSH (0x1D)
+
+See xref:data-plane:push.adoc[].
+
+Flags: `N` (Named, bit 5); `M` (Mapping, bit 6); `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N|  PUSH   |   ID = 0x1D
++-+-+-+---------+
+% key_scope:z16 %   VLE ExprId (0 = global scope)
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16> suffix string
++---------------+
+~  [push_exts]  ~   if Z==1 (QoS, Timestamp, NodeId)
++---------------+
+~   PushBody    ~   PUT (0x01) or DEL (0x02) sub-message
++---------------+
+----
+
+=== REQUEST (0x1C)
+
+See xref:data-plane:query.adoc[].
+
+Flags: `N` (Named, bit 5); `M` (Mapping, bit 6); `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N| Request |   ID = 0x1C
++-+-+-+---------+
+% request_id:z32%   VLE request identifier
++---------------+
+% key_scope:z16 %   VLE ExprId
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16>
++---------------+
+~  [req_exts]   ~   if Z==1 (QoS, Timestamp, NodeId, QueryTarget, Budget, Timeout)
++---------------+
+~  RequestBody  ~   QUERY (0x03) sub-message
++---------------+
+----
+
+=== RESPONSE (0x1B)
+
+See xref:data-plane:reply.adoc[].
+
+Flags: `N` (Named, bit 5); `M` (Mapping, bit 6); `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N| Response|   ID = 0x1B
++-+-+-+---------+
+% request_id:z32%   VLE — correlates to the originating REQUEST
++---------------+
+% key_scope:z16 %
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16>
++---------------+
+~  [reply_exts] ~   if Z==1 (QoS, Timestamp, ResponderId)
++---------------+
+~  ResponseBody ~   REPLY (0x04) or ERR (0x05) sub-message
++---------------+
+----
+
+ResponderId Extension (ZBuf, ID=0x3, M=false):
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|zid_len|X|X|X|X|   bits 7:4 = encoded ZID length
++-+-+-+-+-+-+-+-+
+~      ZID      ~   (1 + zid_len) bytes — responder ZenohID
++---------------+
+%   eid : z32   %   Entity ID within the responding node
++---------------+
+----
+
+=== RESPONSE_FINAL (0x1A)
+
+Signals that all responses to a given REQUEST have been sent.
+Exactly one RESPONSE_FINAL is emitted per REQUEST (from each independent source).
+
+Flags: `Z` (bit 7) only.
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X| ResFinal|   ID = 0x1A
++-+-+-+---------+
+% request_id:z32%   VLE — must match the originating REQUEST
++---------------+
+~  [rf_exts]    ~   if Z==1 (QoS, Timestamp)
++---------------+
+----
+
+=== DECLARE (0x1E)
+
+Carries a single declaration sub-message.
+See xref:session:declarations.adoc[].
+
+Flags: `I` (Interest, bit 5) — interest_id field present; `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|I| DECLARE |   ID = 0x1E
++-+-+-+---------+
+%interest_id:z32%   if I==1: VLE interest ID this declare responds to
++---------------+
+~  [decl_exts]  ~   if Z==1 (QoS, Timestamp, NodeId)
++---------------+
+~  declaration  ~   DeclareBody sub-message (see xref:session:declarations.adoc[])
++---------------+
+----
+
+=== INTEREST (0x19)
+
+Requests that a peer send current and/or future declarations.
+See xref:session:interests.adoc[].
+
+Flags: `Mod[0]` (bit 5), `Mod[1]` (bit 6) — 2-bit interest mode; `Z` (bit 7).
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|Mod| INTEREST|   ID = 0x19; Mod in bits 6:5
++-+-+-+---------+
+%    id : z32   %   VLE — Interest identifier
++---------------+
+|A|M|N|R|T|Q|S|K|   Options byte (present only when Mod != Final=0b00)
++---------------+
+% key_scope:z16 %   if Mod!=Final && R==1: VLE ExprId
++---------------+
+~  key_suffix   ~   if Mod!=Final && R==1 && N==1: <u8;z16>
++---------------+
+~  [int_exts]   ~   if Z==1 (QoS, Timestamp, NodeId)
++---------------+
+----
+
+== Data Sub-Messages
+
+Data sub-messages are the innermost payloads of PUSH, REQUEST, and RESPONSE.
+
+[cols="1,1,1,2"]
+|===
+|Message |ID |Carried in |Purpose
+
+|PUT   |0x01 |PUSH, REPLY |Publish a value
+|DEL   |0x02 |PUSH, REPLY |Delete a resource
+|QUERY |0x03 |REQUEST |Describe query semantics
+|REPLY |0x04 |RESPONSE |Successful query reply (wraps PUT or DEL)
+|ERR   |0x05 |RESPONSE |Error reply
+|===
+
+Full wire formats are in xref:data-plane:push.adoc[], xref:data-plane:query.adoc[], and xref:data-plane:reply.adoc[].
+
+=== PUT (0x01)
+
+Flags: `T` (Timestamp, bit 5); `E` (Encoding, bit 6); `Z` (bit 7).
+
+----
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|E|T|   PUT   |   ID = 0x01
+ +-+-+-+---------+
+ ~  ts: <u8;z16> ~   if T==1: Timestamp
+ +---------------+
+ ~   encoding    ~   if E==1: Encoding field (z32 with S-bit + optional schema)
+ +---------------+
+ ~  [put_exts]   ~   if Z==1 (SourceInfo, Shm, Attachment)
+ +---------------+
+ ~ pl: <u8;z32>  ~   Payload bytes
+ +---------------+
+----
+
+=== DEL (0x02)
+
+Flags: `T` (Timestamp, bit 5); `Z` (bit 7).
+
+----
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|X|T|   DEL   |   ID = 0x02
+ +-+-+-+---------+
+ ~  ts: <u8;z16> ~   if T==1: Timestamp
+ +---------------+
+ ~  [del_exts]   ~   if Z==1 (SourceInfo, Attachment)
+ +---------------+
+----
+
+DEL carries no payload.
+
+=== QUERY (0x03)
+
+Flags: `C` (Consolidation, bit 5); `P` (Parameters, bit 6); `Z` (bit 7).
+
+----
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|P|C|  QUERY  |   ID = 0x03
+ +-+-+-+---------+
+ |consolidation  |   if C==1: ConsolidationMode (u8)
+ +---------------+
+ ~ ps: <u8;z16>  ~   if P==1: query parameters (UTF-8)
+ +---------------+
+ ~  [qry_exts]   ~   if Z==1 (SourceInfo, QueryBody, Shm, Attachment)
+ +---------------+
+----
+
+=== REPLY (0x04)
+
+Flags: `C` (Consolidation, bit 5); `Z` (bit 7).
+
+----
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|X|C|  REPLY  |   ID = 0x04
+ +-+-+-+---------+
+ |consolidation  |   if C==1: ConsolidationMode (u8)
+ +---------------+
+ ~  [repl_exts]  ~   if Z==1
+ +---------------+
+ ~   ReplyBody   ~   PushBody: PUT (0x01) or DEL (0x02)
+ +---------------+
+----
+
+=== ERR (0x05)
+
+Flags: `E` (Encoding, bit 6); `Z` (bit 7).
+
+----
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|E|X|   ERR   |   ID = 0x05
+ +-+-+-+---------+
+ ~   encoding    ~   if E==1: Encoding field
+ +---------------+
+ ~  [err_exts]   ~   if Z==1 (SourceInfo, Shm)
+ +---------------+
+ ~ pl: <u8;z32>  ~   Error payload bytes
+ +---------------+
+----

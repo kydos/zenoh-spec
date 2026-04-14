@@ -1,0 +1,52 @@
+= Keep-Alive
+:description: The KEEP_ALIVE message and lease-based session liveness detection.
+
+The KEEP_ALIVE message proves link liveness when no other message has been transmitted recently.
+Together with the session _lease_, it enables timely detection of failed or silent peers.
+
+== Wire Format
+
+----
+Flags:
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X| KALIVE  |   ID = 0x04
++-+-+-+---------+
+~  [KAliveExts] ~   if Z==1
++---------------+
+----
+
+No mandatory body fields.  The message consists of only the header byte (and optional extensions).
+
+== Lease and Keep-Alive Interval
+
+During xref:session:open-accept.adoc[OPEN], each side proposes a _lease_ duration.
+The effective lease is the minimum of the two proposed values.
+
+=== Sending Rule
+
+A node MUST transmit at least one message (any type, including KEEP_ALIVE) every `lease / 4` milliseconds on each active link.
+
+Using `lease / 4` as the sending interval ensures that at least four messages are emitted within each lease window.
+A keep-alive is only required when no other message (FRAME, FRAGMENT, DECLARE, etc.) has been sent within that interval; if data is flowing, explicit keep-alives may be omitted.
+
+=== Receiving Rule
+
+If a node receives no message from its peer within the effective lease period, it MUST declare the session dead and initiate teardown:
+
+. Close the underlying transport link.
+. Propagate `U_SUBSCRIBER`, `U_QUERYABLE`, and `U_TOKEN` messages for all entities declared by the lost session.
+. Notify the application layer.
+
+== Multilink Behaviour
+
+In a multilink session, the lease applies independently to each link.
+If one link's lease expires, that link is closed.
+The session remains alive as long as at least one link is active.
+
+== Relationship to JOIN (Multicast)
+
+On multicast transports there is no unicast link; liveness is maintained by periodic xref:join.adoc[JOIN] messages instead of KEEP_ALIVE.
+A peer that stops sending JOIN messages within the JOIN lease period is considered offline.

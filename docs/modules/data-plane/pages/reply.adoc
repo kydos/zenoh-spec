@@ -1,0 +1,259 @@
+= Reply (RESPONSE / RESPONSE_FINAL / REPLY / ERR)
+:description: Wire format and semantics of response messages sent by Queryables back to a querier.
+
+_Reply_ messages carry data or errors from a xref:concepts:entities.adoc#queryable[Queryable] back to the originating querier.
+The response layer uses three distinct message types:
+
+`RESPONSE`:: Carries one reply value (a REPLY or ERR sub-message) correlated to a specific REQUEST.
+`RESPONSE_FINAL`:: Signals that all replies for a given `request_id` have been sent.
+`REPLY`:: Data sub-message wrapping a PUT or DEL (the actual reply value).
+`ERR`:: Data sub-message carrying an application-level error.
+
+== Message Layering
+
+A successful reply consists of:
+
+----
+[Transport layer]
+  FRAME (0x05)
+    [Network layer]
+      RESPONSE (0x1B) with request_id + key_expr + extensions
+        [Data layer]
+          REPLY (0x04)
+            [Data layer]
+              PUT (0x01) or DEL (0x02)
+
+Followed by (one per source):
+  FRAME
+    RESPONSE_FINAL (0x1A) with request_id
+----
+
+An error reply substitutes ERR for REPLY:
+
+----
+RESPONSE (0x1B)
+  ERR (0x05) with encoding + payload
+----
+
+== RESPONSE Network Message (0x1B)
+
+RESPONSE carries one reply for a specific `request_id`.
+Multiple RESPONSE messages may be sent for a single REQUEST (one per value or matching queryable).
+
+=== Wire Format
+
+----
+Flags:
+  N  If N==1, key expression suffix is present.
+  M  If M==1, WireExpr scope is sender's mapping space; else receiver's.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N| Response|   ID = 0x1B
++-+-+-+---------+
+% request_id:z32%   VLE — correlates to the originating REQUEST
++---------------+
+% key_scope:z16 %   VLE ExprId (the key expression of this reply value)
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16>
++---------------+
+~  [reply_exts] ~   if Z==1
++---------------+
+~  ResponseBody ~   REPLY (0x04) or ERR (0x05) sub-message
++---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`N` |5 |0x20
+|`M` |6 |0x40
+|`Z` |7 |0x80
+|===
+
+=== RESPONSE Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64  |N |QoS
+|0x2 |ZBuf |N |Timestamp
+|0x3 |ZBuf |N |ResponderId
+|===
+
+==== ResponderId Extension (ZBuf, ID=0x3, M=false)
+
+Identifies the entity that generated the reply.
+ZBuf payload:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|zid_len|X|X|X|X|   bits 7:4 = encoded ZID length; actual = 1 + zid_len
++-+-+-+-+-+-+-+-+
+~      ZID      ~   (1 + zid_len) bytes — responder ZenohID
++---------------+
+%   eid : z32   %   VLE — Entity ID within the responding node
++---------------+
+----
+
+== RESPONSE_FINAL Network Message (0x1A)
+
+[[final]]
+RESPONSE_FINAL signals that all replies for a given `request_id` have been sent.
+Exactly one RESPONSE_FINAL MUST be emitted per REQUEST from each source that independently handles the request.
+
+A querier MUST NOT consider a query complete until:
+
+* A RESPONSE_FINAL has been received from each expected source, OR
+* The query timeout expires (if the Timeout extension was present in REQUEST), OR
+* The reply Budget has been reached.
+
+=== Wire Format
+
+----
+Flags:
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X| ResFinal|   ID = 0x1A
++-+-+-+---------+
+% request_id:z32%   VLE — must match the originating REQUEST
++---------------+
+~  [rf_exts]    ~   if Z==1
++---------------+
+----
+
+=== RESPONSE_FINAL Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64  |N |QoS
+|0x2 |ZBuf |N |Timestamp
+|===
+
+== REPLY Data Sub-Message (0x04)
+
+REPLY is the body of a successful RESPONSE.
+It contains a consolidation mode and a `ReplyBody`, which is itself a `PushBody` (PUT or DEL).
+This layering allows reply values to carry the full set of PUT/DEL semantics (timestamps, encoding, source info, etc.).
+
+=== Wire Format
+
+----
+Flags:
+  C  If C==1, a ConsolidationMode byte is present.
+  Z  If Z==1, extension chain follows.
+
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|X|C|  REPLY  |   ID = 0x04
+ +-+-+-+---------+
+ |consolidation  |   if C==1: ConsolidationMode (u8); same values as QUERY
+ +---------------+
+ ~  [repl_exts]  ~   if Z==1
+ +---------------+
+ ~   ReplyBody   ~   PushBody: PUT (0x01) or DEL (0x02)
+ +---------------+
+----
+
+The `ReplyBody` begins immediately after the extension chain.
+Its own header byte identifies whether it is a PUT or a DEL.
+See xref:push.adoc[] for the complete PUT and DEL wire formats.
+
+=== ConsolidationMode Values
+
+Same values as QUERY — see xref:query.adoc#_consolidationmode_values_u8[ConsolidationMode].
+
+== ERR Data Sub-Message (0x05)
+
+ERR is the body of a RESPONSE when a queryable cannot service the request or encounters an error.
+The queryable MAY include a structured error payload encoded with the Encoding field.
+
+=== Wire Format
+
+----
+Flags:
+  E  If E==1, an Encoding field is present.
+  Z  If Z==1, extension chain follows.
+
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|E|X|   ERR   |   ID = 0x05
+ +-+-+-+---------+
+ ~   encoding    ~   if E==1: Encoding field (see xref:wire:primitives.adoc#_encoding_field[])
+ +---------------+
+ ~  [err_exts]   ~   if Z==1
+ +---------------+
+ ~ pl: <u8;z32>  ~   Error payload bytes (application-defined content)
+ +---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`E` |6 |0x40
+|`Z` |7 |0x80
+|===
+
+=== ERR Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |ZBuf |N |**SourceInfo** — identifies the node that generated the error
+|0x2 |Unit |Y |**Shm** — shared-memory flag (feature-gated)
+|===
+
+== Complete RESPONSE → REPLY → PUT Wire Layout
+
+----
+[u16 LE]                    TCP length prefix
+[FRAME header]              Z|X|R|0x05
+% seq_num %
+[FrameExts]                 QoS extension if Z
+  [RESPONSE header]         Z|M|N|0x1B
+  % request_id %
+  % key_scope %
+  [~ key_suffix ~]          if N
+  [reply_exts]              QoS, Timestamp, ResponderId
+  [REPLY header]            Z|X|C|0x04
+  [consolidation byte]      if C
+  [repl_exts]               (none currently defined)
+  [PUT header]              Z|E|T|0x01
+  [~ timestamp ~]           if T
+  [~ encoding ~]            if E
+  [put_exts]                SourceInfo, Shm, Attachment
+  ~ pl: <u8;z32> ~          payload
+
+Then (separate FRAME):
+  [RESPONSE_FINAL header]   Z|X|X|0x1A
+  % request_id %
+  [rf_exts]                 QoS, Timestamp
+----
+
+== Complete RESPONSE → ERR Wire Layout
+
+----
+[RESPONSE header]           Z|M|N|0x1B
+% request_id %
+% key_scope %
+[~ key_suffix ~]            if N
+[reply_exts]                QoS, Timestamp, ResponderId
+[ERR header]                Z|E|X|0x05
+[~ encoding ~]              if E
+[err_exts]                  SourceInfo, Shm
+~ pl: <u8;z32> ~            error payload
+----

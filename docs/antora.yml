@@ -1,0 +1,16 @@
+name: spec
+title: Zenoh Protocol Specification
+version: '2.0.0'
+display_version: 'v2.0.0'
+start_page: index.adoc
+nav:
+  - modules/ROOT/nav.adoc
+  - modules/concepts/nav.adoc
+  - modules/architecture/nav.adoc
+  - modules/scouting/nav.adoc
+  - modules/transport/nav.adoc
+  - modules/session/nav.adoc
+  - modules/data-plane/nav.adoc
+  - modules/wire/nav.adoc
+  - modules/security/nav.adoc
+  - modules/appendix/nav.adoc

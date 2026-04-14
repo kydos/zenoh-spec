@@ -1,0 +1,90 @@
+= Quality of Service
+:description: QoS properties that govern how Zenoh messages are prioritised, delivered, and scheduled.
+
+Zenoh exposes several QoS knobs that let applications trade off latency, throughput, reliability, and resource consumption on a per-message basis.
+QoS metadata is carried in the `ext_qos` extension block attached to PUSH, REQUEST, and RESPONSE network messages.
+
+== QoS Extension Wire Format
+
+The QoS extension is a Z64 (ID=0x1, M=false) whose value encodes the following flags in a single byte:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|0|r|F|E|D|prio |   low byte of the z64 value; upper bytes are zero
++-+-+-+-+-------+
+----
+
+[cols="1,1,3"]
+|===
+|Field |Bits |Meaning
+
+|`prio` |2:0 |Priority class (0–7; see table below)
+|`D`    |3   |Don't-drop — use Block congestion control (sender blocks on queue full)
+|`E`    |4   |Express — bypass batching; transmit immediately
+|`F`    |5   |Don't-drop-first (BlockFirst) — first message blocks; rest drop; Patch ≥ 1 required
+|`r`    |6   |Reserved (zero)
+|       |7   |Reserved (zero)
+|===
+
+== Priority
+
+Priority determines the order in which messages compete for transmission resources.
+Higher-priority messages are scheduled before lower-priority messages when the link is congested.
+Each priority level has independent sequence-number spaces (when QoS is negotiated during INIT).
+
+[cols="1,2,3"]
+|===
+|Value |Name |Typical use
+
+|0 |Control |Protocol control messages; highest priority
+|1 |RealTime |Hard real-time sensor readings; jitter-sensitive
+|2 |InteractiveHigh |Human-in-the-loop: UI updates, teleoperation
+|3 |InteractiveLow |Low-latency but not hard real-time
+|4 |DataHigh |High-importance application data
+|5 |Data |Default for all user messages
+|6 |DataLow |Background application data
+|7 |Background |Bulk transfers; lowest priority
+|===
+
+The default priority is `5` (Data) when no QoS extension is present.
+
+== Reliability
+
+Reliability is negotiated at the channel level (FRAME/FRAGMENT `R` flag), not per message:
+
+`Reliable` (`R=1`):: Messages are delivered in order without loss.
+The transport layer handles acknowledgement and retransmission.
+Suitable for control messages, declarations, and application data where loss is unacceptable.
+
+`BestEffort` (`R=0`):: Messages may be dropped or arrive out of order.
+Suitable for high-frequency sensor data where occasional loss is acceptable and retransmission would cause staleness.
+
+== Congestion Control
+
+Congestion control governs the sender's behaviour when the transmit queue is full:
+
+`Drop` (`D=0, F=0`):: The message is silently discarded if there is no queue space.
+This prevents a slow consumer from blocking a fast producer.
+*Default for PUSH.*
+
+`Block` (`D=1, F=0`):: The sender blocks until queue space becomes available.
+Suitable when data loss is unacceptable and back-pressure is tolerable.
+*Default for REQUEST, DECLARE, INTEREST.*
+
+`BlockFirst` (`D=0, F=1`):: Only the first message in a burst blocks; subsequent messages are dropped.
+Requires Patch ≥ 1 negotiated during INIT.
+
+== Express Flag (E)
+
+When the `E` flag is set, the message bypasses the batching layer and is transmitted immediately in its own FRAME, even if other messages are waiting.
+This minimises latency at the cost of per-message network overhead.
+
+Express should be used sparingly — typically only for the highest-priority control or real-time messages.
+
+== Priority Lanes (QoS-enabled sessions)
+
+When both endpoints include the QoS extension during INIT, the session operates with 8 independent priority queues.
+Each FRAME carries a QoS extension identifying the priority of its payload; the transport layer can route FRAMEs of different priorities over independent channels to prevent head-of-line blocking.
+
+In JOIN (multicast), the QoS SN extension carries per-priority sequence numbers — see xref:transport:join.adoc[].

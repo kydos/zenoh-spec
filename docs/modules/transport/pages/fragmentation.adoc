@@ -1,0 +1,93 @@
+= Fragmentation
+:description: How Zenoh splits large NetworkMessages across multiple FRAGMENT transport messages.
+
+When a serialised NetworkMessage is too large to fit in a single FRAME (exceeds the negotiated batch size), it MUST be fragmented across multiple FRAGMENT transport messages.
+
+== Overview
+
+FRAGMENT messages share the same sequence-number space as FRAME messages on the same reliability channel.
+While a fragmented message is in transit, no other FRAME or FRAGMENT for a _different_ message may be sent on that channel until all fragments of the current message have been sent.
+
+== Wire Format
+
+----
+Flags:
+  R  If R==1, reliable channel (same meaning as in FRAME).
+  M  If M==1, more fragments follow.
+     If M==0, this is the last (or only) fragment.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|R| FRAGMENT|   ID = 0x06
++-+-+-+---------+
+%    seq_num    %   VLE sequence number (same space as FRAME on this channel)
++---------------+
+~  [FragExts]   ~   if Z==1
++---------------+
+~  [fragment]   ~   raw fragment bytes (fills the remainder of the batch)
++---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`R` |5 |0x20
+|`M` |6 |0x40
+|`Z` |7 |0x80
+|===
+
+== Fragmentation Flow
+
+----
+A                   B
+|  FRAGMENT (M=1)   |   first fragment (seq_num = N)
+|─────────────────>|
+|  FRAGMENT (M=1)   |   middle fragments (seq_num = N+1, N+2, …)
+|─────────────────>|
+|  FRAGMENT (M=0)   |   last fragment (seq_num = N+k)
+|─────────────────>|
+----
+
+The receiver accumulates consecutive FRAGMENT messages (by sequence number on the same channel) until a fragment with `M==0` is received.
+The accumulated payloads are concatenated and decoded as a single NetworkMessage.
+
+== Fragment Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64  |Y |**QoS** — same priority encoding as Frame QoS; the whole fragmented message shares a single priority
+|0x2 |Unit |N |**First** — marks the first fragment (requires Patch ≥ 1)
+|0x3 |Unit |N |**Drop** — signals that remaining fragments have been dropped (requires Patch ≥ 1)
+|===
+
+=== First and Drop Extensions (Patch ≥ 1)
+
+When both ends negotiate `Patch ≥ 1` during xref:session:open-accept.adoc[INIT]:
+
+**First (ID=0x2)**:: The sender MUST include this Unit extension on the first FRAGMENT of a new message.
+Even if fragments arrive out-of-order (e.g., on an unordered multicast channel), receivers can use the First marker to identify the start of a new fragmented message.
+
+**Drop (ID=0x3)**:: When a sender decides to abort a partially transmitted fragmented message (e.g., due to a priority-preemption or a new message superseding the in-flight one), it sends a final FRAGMENT with `M==0` and the Drop extension.
+The Drop fragment MAY carry zero payload bytes.
+On receiving Drop, the receiver MUST discard all accumulated fragments and resume waiting for the next First-marked fragment.
+
+== Reassembly
+
+. Allocate a reassembly buffer on the first FRAGMENT (or on the First-marked fragment when Patch ≥ 1).
+. Append each fragment's payload in sequence-number order.
+. When a FRAGMENT with `M==0` and no Drop extension is received, deliver the complete reassembled message to the network layer.
+. If a FRAGMENT with `M==0` and the Drop extension is received, discard the buffer.
+
+=== Error Handling
+
+On a best-effort channel (`R==0`), if any fragment is lost the partially reassembled message MUST be discarded.
+Without Patch ≥ 1, the receiver may not detect the loss until the next First-marked fragment or the next FRAME on that channel.
+With Patch ≥ 1, the First extension provides an unambiguous reset point.
+
+On a reliable channel (`R==1`), the underlying transport guarantees in-order delivery; loss does not occur at the fragmentation level.

@@ -1,0 +1,24 @@
+site:
+  title: Zenoh Protocol Specification
+  url: https://spec.zenoh.io
+  start_page: spec::index.adoc
+  robots: allow
+
+content:
+  sources:
+    - url: .
+      branches: HEAD
+      start_path: docs
+
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+
+asciidoc:
+  attributes:
+    page-pagination: ''
+    source-highlighter: highlight.js
+    icons: font
+    spec-version: 2.0.0
+    zenoh-version: 2.0.0

@@ -1,0 +1,67 @@
+= Close
+:description: The CLOSE message used to terminate a Zenoh session or a single transport link.
+
+A CLOSE message explicitly terminates an established (or in-progress) session or a single transport link.
+It may be sent at any time, including in response to an INIT or OPEN message that is rejected.
+
+== Wire Format
+
+----
+Flags:
+  S  If S==1 → close the entire session (all links).
+     If S==0 → close only this link (multilink sessions retain other links).
+  Z  If Z==1 → extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|S|  CLOSE  |   ID = 0x03
++-+-+-+---------+
+|    reason     |   Close reason code (u8)
++---------------+
+~  [CloseExts]  ~   if Z==1
++---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`S` |5 |0x20
+|`Z` |7 |0x80
+|===
+
+== Reason Codes
+
+[cols="1,1,3"]
+|===
+|Code |Name |Description
+
+|0x00 |`GENERIC`            |Unspecified reason
+|0x01 |`UNSUPPORTED`        |Peer sent an unsupported version or mandatory extension
+|0x02 |`INVALID`            |Malformed message or invalid protocol state
+|0x03 |`MAX_SESSIONS`       |Session limit reached on the responder
+|0x04 |`MAX_LINKS`          |Link limit per session reached
+|0x05 |`EXPIRED`            |Session lease period expired (no KEEP_ALIVE received in time)
+|0x06 |`UNRESPONSIVE`       |Peer stopped responding to KEEP_ALIVE
+|0x07 |`CONNECTION_TO_SELF` |Detected a loopback connection (same ZenohID on both ends)
+|===
+
+== Behaviour
+
+On receiving a CLOSE, a node MUST:
+
+. Stop sending on the closed session (or link, if `S==0`).
+. Release all resources associated with the session (or link).
+. Propagate `U_SUBSCRIBER`, `U_QUERYABLE`, and `U_TOKEN` messages for all entities that were declared by the closing session and not declared by any other remaining session.
+
+A CLOSE does not require a reply.
+The receiving node simply ceases to use the session and releases resources.
+
+== Sending CLOSE
+
+A sender SHOULD include the most specific applicable reason code.
+If the session was never fully established (e.g., CLOSE is sent in response to INIT), the sender SHOULD use `UNSUPPORTED` or `INVALID` as appropriate.
+
+On stream links, after sending CLOSE the sender SHOULD close the underlying TCP/TLS connection.

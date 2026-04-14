@@ -1,0 +1,40 @@
+= Authentication
+:description: Authentication mechanisms available during Zenoh session establishment.
+
+Authentication verifies the identity of a node before a session is allowed to proceed.
+Zenoh supports both transport-layer and session-layer authentication.
+
+== Transport-Layer Authentication (TLS / QUIC)
+
+When a TLS or QUIC link is used, mutual TLS (mTLS) provides strong authentication via X.509 certificates.
+
+* The server certificate is always validated by the client.
+* The client certificate is optional (`ext_auth` not required) but RECOMMENDED for production deployments.
+* The Subject or Subject Alternative Name (SAN) of the peer certificate is available to the access control layer.
+
+// TODO: Define which certificate attributes are extracted and how they map to access control subjects.
+
+== Session-Layer Authentication (ext_auth)
+
+The `ext_auth` extension in xref:session:open-accept.adoc[Open/Accept] carries authentication material at the session layer, independent of the transport.
+
+// TODO: Define the ext_auth extension wire format and the supported authentication methods:
+//   - Username / Password (HMAC-based challenge-response)
+//   - Pre-shared key (PSK)
+//   - Token (e.g., JWT bearer token)
+
+=== Handshake Flow
+
+[source]
+----
+Initiator                       Responder
+    |── Open + ext_auth(init) ──>|
+    |<── Accept + ext_auth(resp) |  (or Close)
+----
+
+// TODO: Define the challenge/response fields and MAC algorithm.
+
+== Combining Mechanisms
+
+Transport-layer and session-layer authentication may be used simultaneously.
+Access control decisions MAY use identity from either layer.

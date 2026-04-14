@@ -1,0 +1,231 @@
+= Push (PUSH / PUT / DEL)
+:description: Wire format and semantics of the PUSH network message and its PUT and DEL data sub-messages.
+
+A _Push_ delivers an unsolicited data publication to all subscribers whose declared key expression intersects the target key expression.
+Zenoh uses two distinct data sub-messages to distinguish a new value from a deletion:
+
+`PUT`:: Delivers a new or updated value to a key expression.
+`DEL`:: Signals that the resource at a key expression has been deleted.
+
+== Message Layering
+
+A complete publication on the wire consists of three layers:
+
+----
+[Transport layer]
+  FRAME (0x05) with seq_num + QoS extension
+    [Network layer]
+      PUSH (0x1D) with key_expr + extensions
+        [Data layer]
+          PUT (0x01) or DEL (0x02) with payload + extensions
+----
+
+== PUSH Network Message (0x1D)
+
+PUSH addresses a key expression and carries either a PUT or DEL data sub-message in its body.
+
+=== Wire Format
+
+----
+Flags:
+  N  If N==1, the key expression has a name/suffix (suffix field present).
+  M  If M==1, the WireExpr scope is in the sender's mapping space; else receiver's.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N|  PUSH   |   ID = 0x1D
++-+-+-+---------+
+% key_scope:z16 %   VLE ExprId (0 = global scope)
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16> suffix string
++---------------+
+~  [push_exts]  ~   if Z==1
++---------------+
+~   PushBody    ~   PUT (0x01) or DEL (0x02) sub-message
++---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`N` |5 |0x20
+|`M` |6 |0x40
+|`Z` |7 |0x80
+|===
+
+=== PUSH Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64  |N |QoS (see xref:concepts:qos.adoc[] and xref:wire:message-format.adoc#_common_network_extensions[])
+|0x2 |ZBuf |N |Timestamp (HLC; see xref:wire:primitives.adoc#_timestamp_hlc_ntp64_zenohid[])
+|0x3 |Z64  |Y |NodeId (loop-prevention forwarding hop identifier)
+|===
+
+== PUT Data Sub-Message (0x01)
+
+PUT delivers a value payload associated with the enclosing PUSH's key expression.
+
+=== Wire Format
+
+----
+Flags:
+  T  If T==1, a Timestamp field is present.
+  E  If E==1, an Encoding field is present.
+  Z  If Z==1, extension chain follows.
+
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|E|T|   PUT   |   ID = 0x01
+ +-+-+-+---------+
+ ~  ts: <u8;z16> ~   if T==1: Timestamp (NTP64 + ZenohID)
+ +---------------+
+ ~   encoding    ~   if E==1: Encoding field (see xref:wire:primitives.adoc#_encoding_field[])
+ +---------------+
+ ~  [put_exts]   ~   if Z==1
+ +---------------+
+ ~ pl: <u8;z32>  ~   Payload bytes (z32 length prefix + raw bytes; length may be 0)
+ +---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`T` |5 |0x20
+|`E` |6 |0x40
+|`Z` |7 |0x80
+|===
+
+=== PUT Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |ZBuf |N |**SourceInfo** — identifies the originating publisher
+|0x2 |Unit |Y |**Shm** — shared-memory flag (feature-gated; present implies SHM-capable receiver)
+|0x3 |ZBuf |N |**Attachment** — user-defined key/value metadata
+|===
+
+== DEL Data Sub-Message (0x02)
+
+DEL signals the deletion of a resource at the enclosing PUSH's key expression.
+It carries no data payload; only an optional timestamp and metadata extensions.
+
+=== Wire Format
+
+----
+Flags:
+  T  If T==1, a Timestamp field is present.
+  Z  If Z==1, extension chain follows.
+
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|X|T|   DEL   |   ID = 0x02
+ +-+-+-+---------+
+ ~  ts: <u8;z16> ~   if T==1: Timestamp (NTP64 + ZenohID)
+ +---------------+
+ ~  [del_exts]   ~   if Z==1
+ +---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`T` |5 |0x20
+|`Z` |7 |0x80
+|===
+
+=== DEL Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |ZBuf |N |**SourceInfo** — identifies the originating publisher
+|0x2 |ZBuf |N |**Attachment** — user-defined key/value metadata
+|===
+
+NOTE: DEL Attachment is at ID=0x2, whereas PUT Attachment is at ID=0x3.
+The difference arises because PUT has a Shm extension at ID=0x2 (absent in DEL).
+
+== Common Data Extensions
+
+=== SourceInfo (ZBuf, ID=0x1)
+
+Identifies the origin of a data message.
+Used by subscribers to correlate samples from the same publisher and to detect duplicates.
+
+ZBuf payload:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|zid_len|X|X|X|X|   bits 7:4 = encoded ZID length; actual = 1 + zid_len
++-+-+-+-+-+-+-+-+
+~      ZID      ~   (1 + zid_len) bytes — source node ZenohID
++---------------+
+%   eid : z32   %   VLE — Entity ID within the source node
++---------------+
+%    sn  : z32  %   VLE — Source sequence number (monotonically increasing per entity)
++---------------+
+----
+
+=== Attachment (ZBuf)
+
+User-defined key/value metadata attached to a data message.
+The ZBuf payload is:
+
+----
+% num_pairs : z32 %   VLE — number of key/value pairs
+For each pair:
+  ~ key: <u8;z16> ~   key bytes
+  ~ val: <u8;z32> ~   value bytes
+----
+
+The keys and values are opaque bytes; their interpretation is application-defined.
+
+=== Shm (Unit, M=true, ID=0x2)
+
+A zero-payload extension that signals the associated data payload resides in shared memory.
+Only meaningful between processes on the same host.
+Presence implies the receiver MUST understand shared-memory access; if it does not, it MUST reject the message (`M=true`).
+
+== Complete PUSH → PUT Wire Layout
+
+For implementors: the full wire layout for a TCP-framed PUSH→PUT message is:
+
+----
+[u16 LE]                    TCP length prefix (stream transports only)
+[FRAME header]              Z|X|R|0x05
+% seq_num %                 VLE sequence number
+[FrameExts]                 if Z: QoS priority extension
+  [PUSH header]             Z|M|N|0x1D
+  % key_scope %             VLE ExprId
+  [~ key_suffix ~]          if N: <u8;z16>
+  [push_exts]               if Z: QoS, Timestamp, NodeId extensions
+  [PUT header]              Z|E|T|0x01
+  [~ timestamp ~]           if T: Timestamp
+  [~ encoding ~]            if E: Encoding
+  [put_exts]                if Z: SourceInfo, Shm, Attachment
+  ~ pl: <u8;z32> ~          payload
+----
+
+== Routing
+
+A PUSH message is forwarded by routers to every session that has declared a subscriber whose key expression intersects the PUSH key expression.
+See xref:architecture:routing.adoc[].
+
+Publishers SHOULD attach a Timestamp (via the PUSH QoS extension or the PUT T flag) to enable storage-level conflict resolution using the Hybrid Logical Clock.

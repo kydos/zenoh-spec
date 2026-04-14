@@ -1,0 +1,42 @@
+= Threat Model
+:description: The security threat model for Zenoh deployments.
+
+== Assets
+
+// TODO: Define the assets being protected:
+//   - Confidentiality of published data
+//   - Integrity of published data and control messages
+//   - Availability of the network (protection against disruption)
+//   - Identity of nodes (protection against impersonation)
+//   - Authorisation decisions (protection against privilege escalation)
+
+== Trust Boundaries
+
+// TODO: Define trust boundaries:
+//   - Trusted: the local node process
+//   - Semi-trusted: authenticated peers within the same administrative domain
+//   - Untrusted: unauthenticated or external nodes
+
+== In-Scope Threats
+
+// TODO: List threats addressed by this specification:
+//   - Eavesdropping on data in transit
+//   - Man-in-the-middle attacks on session establishment
+//   - Unauthorised publishing or subscribing
+//   - Rogue router injection
+//   - Replay attacks (via HLC timestamps on data)
+
+== Out-of-Scope Threats
+
+// TODO: Explicitly list threats this specification does NOT address:
+//   - Physical access to devices
+//   - Side-channel attacks
+//   - Compromise of the trusted node process itself
+//   - Denial-of-service at the IP layer
+
+== Security Assumptions
+
+// TODO: State the cryptographic and infrastructure assumptions the security model relies on:
+//   - TLS certificate chain validation
+//   - Secure key management (out of scope for this specification)
+//   - Correct system clock (for HLC replay protection)

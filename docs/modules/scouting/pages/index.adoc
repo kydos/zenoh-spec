@@ -1,0 +1,33 @@
+= Scouting
+:description: The Scouting sub-protocol used to discover Zenoh routers and peers on a network.
+
+_Scouting_ is the mechanism by which Zenoh nodes discover each other without prior knowledge of network addresses.
+It operates over UDP multicast (for automatic local-network discovery) or UDP unicast (for targeted discovery across routed networks).
+
+NOTE: Scouting only discovers endpoints — it does not establish a Zenoh session.
+After discovery the node uses the locators advertised in the xref:hello.adoc[HELLO] message to initiate the xref:session:open-accept.adoc[INIT/OPEN] handshake over a transport link.
+
+== Message Flow
+
+----
+Node A                          Node B
+  |── SCOUT (multicast/unicast)─>|
+  |<──────────── HELLO ──────────|   unicast reply
+----
+
+== Scouting Modes
+
+`Multicast`::
+xref:scout.adoc[SCOUT] and xref:hello.adoc[HELLO] messages are exchanged on a well-known UDP multicast group and port.
+All nodes on the local network segment that match the `WhatAmIMatcher` respond with a HELLO.
+
+`Unicast`::
+SCOUT messages are sent directly to one or more configured unicast endpoints.
+Used when IP multicast is unavailable or when discovering specific routers by address.
+
+`Passive (HELLO-only)`::
+A node may send periodic HELLO messages in multicast without a preceding SCOUT, advertising itself to any listening node.
+
+== Relationship to Session Establishment
+
+Once a suitable node has been identified via HELLO, the discovering node opens a transport link to one of the advertised locators and performs the xref:session:open-accept.adoc[INIT/OPEN] handshake to establish a full session.

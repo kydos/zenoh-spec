@@ -1,0 +1,52 @@
+= Zenoh Protocol Specification
+:description: The complete specification of the Zenoh v2.0.0 protocol.
+
+Zenoh (pronounced _/zeno/_) is a pub/sub/query protocol engineered for the full compute continuum — from microcontrollers to cloud infrastructure.
+This document formally defines the wire format, protocol behaviours, and semantics of Zenoh version *{zenoh-version}*.
+
+== How to Read this Specification
+
+Readers new to Zenoh should start with the xref:introduction.adoc[Introduction] and xref:concepts:index.adoc[Concepts] sections before proceeding to the protocol details.
+Implementors should pay close attention to the xref:wire:index.adoc[Wire Format] and xref:session:index.adoc[Session] sections.
+
+== Document Structure
+
+[cols="1,3"]
+|===
+|Section |Description
+
+|xref:introduction.adoc[Introduction]
+|Goals, non-goals, and high-level overview of the protocol.
+
+|xref:concepts:index.adoc[Concepts]
+|Core abstractions: key expressions, entities, QoS, and value encoding.
+
+|xref:architecture:index.adoc[Architecture]
+|System roles, network topologies, and routing.
+
+|xref:scouting:index.adoc[Scouting]
+|Peer and router discovery via the Scouting sub-protocol.
+
+|xref:transport:index.adoc[Transport]
+|Link management, batching, fragmentation, and keep-alive.
+
+|xref:session:index.adoc[Session]
+|Session establishment, declarations, and interests.
+
+|xref:data-plane:index.adoc[Data Plane]
+|Push, query, and reply message flows.
+
+|xref:wire:index.adoc[Wire Format]
+|Binary encoding rules for all protocol messages.
+
+|xref:security:index.adoc[Security]
+|Threat model, authentication, and access control.
+
+|xref:appendix:index.adoc[Appendix]
+|Glossary, formal grammar, and references.
+|===
+
+== Status of this Document
+
+This document specifies Zenoh protocol version *{spec-version}*.
+It is maintained by the https://zenoh.io[Eclipse Zenoh] project.

@@ -1,0 +1,49 @@
+= Session
+:description: Zenoh session establishment, declarations, and interests.
+
+A Zenoh _session_ is a logical association between two nodes established over one or more xref:transport:links.adoc[transport links].
+All data exchange occurs within the context of an established session.
+
+== Session Lifecycle (Unicast)
+
+----
+A                           B
+|                           |
+|  INIT SYN  (A=0)          |   propose version, ZID, parameters
+|─────────────────────────>|
+|          INIT ACK  (A=1)  |   accept + cookie
+|<─────────────────────────|
+|  OPEN SYN  (A=0)          |   echo cookie + propose lease / initial_sn
+|─────────────────────────>|
+|          OPEN ACK  (A=1)  |   confirm; session is now active
+|<─────────────────────────|
+|                           |
+|  FRAME (network messages) |
+|<────────────────────────>|
+|  KEEP_ALIVE               |   every lease/4
+|<────────────────────────>|
+|                           |
+|  CLOSE (when done)        |
+|─────────────────────────>|
+----
+
+== Session Lifecycle (Multicast)
+
+On multicast transports, JOIN replaces the INIT/OPEN handshake.
+See xref:transport:join.adoc[].
+
+== Establishment
+
+See xref:open-accept.adoc[] for the normative definition of the INIT and OPEN messages and their negotiated parameters (resolution, batch size, lease duration, extensions).
+
+== Declarations
+
+Within an established session, nodes exchange xref:declarations.adoc[Declarations] to announce entities (subscribers, queryables, tokens) and key expression aliases.
+
+== Interests
+
+xref:interests.adoc[Interests] allow a node joining an existing network to request a snapshot of current declarations from its peer, ensuring declaration state consistency without a global reset.
+
+== Session Termination
+
+A session ends either via an explicit xref:close.adoc[Close] message or implicitly when the session lease expires (no message received within the lease period; see xref:transport:keep-alive.adoc[Keep-Alive]).

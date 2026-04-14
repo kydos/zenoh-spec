@@ -1,0 +1,24 @@
+= Wire Format
+:description: Binary encoding rules for all Zenoh protocol messages.
+
+This section is the normative reference for the binary encoding of every Zenoh message.
+All other sections of the specification describe semantics; this section describes bits on the wire.
+
+== Encoding Principles
+
+* All multi-byte integers are encoded in *little-endian* byte order.
+* Non-negative integers of variable magnitude use xref:primitives.adoc#vle[Variable-Length Encoding (VLE)].
+* Every message begins with a 1-byte _header_ that encodes the message kind (bits 4..0) and flag bits (bits 7..5).
+* Optional fields are enabled by flag bits in the header or in extension blocks.
+* Extension blocks follow a type-length-value (TLV) structure; unknown extensions with the `mandatory` bit clear MUST be silently skipped.
+
+== How to Read This Section
+
+xref:primitives.adoc[Primitives]::
+Scalar types, VLE integers, strings, byte arrays, ZenohId, locators, and timestamps.
+
+xref:frame-format.adoc[Frame Format]::
+The batch/frame structure that wraps messages on stream and datagram links.
+
+xref:message-format.adoc[Message Reference]::
+Byte-level encoding of every Zenoh message type, organised by layer (transport, session, network).

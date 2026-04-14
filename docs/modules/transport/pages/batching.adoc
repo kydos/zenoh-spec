@@ -1,0 +1,69 @@
+= Batching
+:description: How Zenoh aggregates multiple NetworkMessages into a single FRAME transport message.
+
+_Batching_ reduces per-message network overhead by packing multiple Zenoh NetworkMessages into a single FRAME and transmitting them as one network packet.
+
+== Batch Frame Structure
+
+On stream-oriented links (TCP, TLS, QUIC) each batch is length-prefixed:
+
+----
+StreamBatch = BatchLength 1*Message
+BatchLength = u16le       ;; total byte length of the messages that follow
+----
+
+On datagram links (UDP) the entire datagram payload is the batch (no length prefix):
+
+----
+DatagramBatch = 1*Message
+----
+
+For the full frame structure see xref:wire:frame-format.adoc[].
+
+== Batch Size Limit
+
+The maximum batch size is negotiated during xref:session:open-accept.adoc[INIT] via the `batch_size` field.
+The effective batch size is the minimum of the two sides' advertised values.
+Neither endpoint may emit a batch exceeding the value negotiated by the remote.
+
+Default batch size: 65 535 bytes (the maximum addressable by the u16 length prefix).
+
+== FRAME Transport Message
+
+All NetworkMessages MUST be carried inside a FRAME transport message, never placed directly in a batch.
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|R|  FRAME  |   ID = 0x05; R=1 → reliable channel
++-+-+-+---------+
+%    seq_num    %   VLE sequence number
++---------------+
+~  [FrameExts]  ~   if Z==1 (e.g., QoS priority)
++---------------+
+~  [NetworkMsg] ~   one or more back-to-back serialised NetworkMessages
++---------------+
+----
+
+NetworkMessages within a FRAME are self-delimiting.
+A receiver decodes them sequentially until the batch boundary is reached.
+
+See xref:wire:frame-format.adoc[] for the complete FRAME format including the QoS priority extension.
+
+== Flush Policies
+
+A sender accumulates NetworkMessages into the current batch and flushes when one of the following conditions is met:
+
+. The batch reaches the negotiated `batch_size` limit.
+. A message with the `E` (Express) flag set in its QoS extension is enqueued — the current batch is flushed immediately before transmitting the express message alone.
+. A configurable coalescing timer expires.
+
+The `E` (Express) flag is defined in the network-level xref:wire:message-format.adoc#_common_network_extensions[QoS extension].
+
+== QoS Priority Lanes
+
+When both endpoints negotiate QoS support during INIT, each FRAME carries a QoS extension identifying the priority of its NetworkMessages.
+FRAMEs of different priorities MAY be batched separately and transmitted on independent lanes, allowing higher-priority messages to bypass lower-priority queues.
+
+Priority values range from 0 (Control) to 7 (Background), with 5 (Data) as the default.
+See xref:concepts:qos.adoc[] for the full priority table and congestion-control semantics.

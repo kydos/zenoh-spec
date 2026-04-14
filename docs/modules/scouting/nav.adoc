@@ -1,0 +1,4 @@
+.Scouting
+* xref:index.adoc[Overview]
+* xref:scout.adoc[Scout]
+* xref:hello.adoc[Hello]

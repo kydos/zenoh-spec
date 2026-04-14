@@ -1,0 +1,85 @@
+= Introduction
+:description: Goals, design principles, and motivation for the Zenoh protocol.
+
+Zenoh unifies _data in motion_, _data at rest_, and _computations_ in a single coherent protocol designed to span the full compute continuum — from deeply embedded microcontrollers to cloud services.
+
+== Motivation
+
+Modern distributed systems span a vast range of deployment environments: resource-constrained embedded devices on serial links, edge gateways on LTE, campus networks on Ethernet, and cloud services connected via the Internet.
+Existing pub/sub protocols (MQTT, DDS, AMQP, Kafka) are each optimised for a narrow slice of this continuum:
+
+* MQTT is simple but lacks geo-distributed query semantics and fine-grained QoS.
+* DDS provides rich QoS but imposes substantial code-size and memory overhead unsuitable for constrained devices.
+* AMQP and Kafka are broker-centric and ill-suited for peer-to-peer or bandwidth-constrained links.
+
+Zenoh was designed from the ground up to operate efficiently across _all_ of these environments with a single protocol.
+
+== Goals
+
+The protocol is designed with the following properties:
+
+*Extreme scalability*:: Millions of nodes and billions of named resources are a design target.
+The key-expression wildcard matching system and lazy-declaration model (via Interests) are designed to avoid state explosion at routers.
+
+*Ultra-low wire overhead*:: Variable-length integer encoding (LEB128) throughout, compact packed headers, and optional field presence flags minimise byte counts.
+No mandatory framing overhead beyond a single header byte per message.
+
+*No-alloc / no-std compatibility*:: The wire format was co-designed with an embedded implementation (`zenoh-nostd`) that requires no dynamic memory allocation to parse or emit messages.
+Fixed-layout fields and self-delimiting VLE encodings enable zero-copy parsing on bare-metal targets.
+
+*Topology independence*:: Zenoh supports peer-to-peer, brokered (router-centric), and hybrid topologies without wire-format changes.
+The same protocol runs over TCP unicast, UDP multicast, TLS, QUIC, and serial links.
+
+*Unified data model*:: Pub/sub, geo-distributed storage, queries, and computations share a single addressing scheme (key expressions) and a single session model, avoiding the complexity of operating multiple protocol stacks in parallel.
+
+*Late-joining consistency*:: The Interest mechanism allows nodes that join an existing network to recover the full declaration state (subscribers, queryables, tokens) without a global reset or pre-provisioned configuration.
+
+== Non-Goals
+
+This specification does not:
+
+* Define a configuration file format or management API.
+* Mandate a specific routing algorithm (only the messages that convey routing information are specified).
+* Define storage backend implementations.
+* Prescribe application-level encoding IDs beyond the well-known set (see xref:concepts:encoding.adoc[]).
+
+== Protocol Layering
+
+----
+┌────────────────────────────────────────┐
+│            Scouting Layer              │  SCOUT / HELLO
+│    (peer discovery, multicast)         │  (UDP multicast / broadcast)
+└────────────────────────────────────────┘
+
+┌────────────────────────────────────────┐
+│           Transport Layer              │  INIT / OPEN / CLOSE / KEEP_ALIVE
+│    (session setup, reliability,        │  FRAME / FRAGMENT / JOIN
+│     flow control, fragmentation)       │  (TCP unicast / UDP multicast)
+└────────────────────────────────────────┘
+         │  carries inside FRAME/FRAGMENT │
+┌────────────────────────────────────────┐
+│            Network Layer               │  PUSH / REQUEST / RESPONSE /
+│    (pub/sub/query semantics,           │  RESPONSE_FINAL / DECLARE / INTEREST
+│     key expressions, declarations)     │
+└────────────────────────────────────────┘
+         │  carried as message payloads  │
+┌────────────────────────────────────────┐
+│            Data Layer                  │  PUT / DEL / QUERY / REPLY / ERR
+│    (application data, encoding,        │
+│     timestamps, source info)           │
+└────────────────────────────────────────┘
+----
+
+== Protocol Version
+
+This document specifies Zenoh protocol version *9* (`0x09`).
+All messages carry a version byte; nodes MUST reject messages with an unrecognised version.
+
+== Terminology
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+document are to be interpreted as described in https://www.rfc-editor.org/rfc/rfc2119[RFC 2119].
+
+Defined terms appear in _italics_ on first use and are collected in the
+xref:appendix:glossary.adoc[Glossary].

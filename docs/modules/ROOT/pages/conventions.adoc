@@ -1,0 +1,77 @@
+= Conventions
+:description: Notation and typographic conventions used throughout this specification.
+
+== Typographic Conventions
+
+`monospace`:: Protocol field names, message names, and literal constants.
+_italic_:: Defined terms on first use; see the xref:appendix:glossary.adoc[Glossary].
+*bold*:: Important normative constraints or emphasis.
+
+== Byte Diagrams
+
+Byte diagrams depict individual bytes in transmission order (leftmost byte = first byte on the wire).
+Bit positions are numbered from the least-significant bit (bit 0) on the right to the most-significant bit (bit 7) on the left:
+
+----
+ 7   6   5   4   3   2   1   0
++---+---+---+---+---+---+---+---+
+|FL3|FL2|FL1|        ID         |
++---+---+---+---+---+---+---+---+
+----
+
+`ID` (bits 4:0):: 5-bit message-kind identifier.
+`FL1`, `FL2`:: Message-specific single-bit flags.
+`FL3` (bit 7):: Always the `Z` (Extensions) flag.
+
+Multi-byte sequences are shown across successive rows; the first row is the byte transmitted first.
+
+== Field Notation
+
+[cols="1,3"]
+|===
+|Symbol |Meaning
+
+|`u8` |Fixed 1-byte unsigned integer
+|`u16 LE` |Fixed 2-byte unsigned integer, little-endian
+|`z8` |VLE-encoded unsigned integer, underlying type `u8` (1–2 bytes)
+|`z16` |VLE-encoded unsigned integer, underlying type `u16` (1–3 bytes)
+|`z32` |VLE-encoded unsigned integer, underlying type `u32` (1–5 bytes)
+|`z64` |VLE-encoded unsigned integer, underlying type `u64` (1–9 bytes)
+|`<u8;z16>` |Byte array: `z16` length prefix followed by that many bytes
+|`<u8;z32>` |Byte array: `z32` length prefix followed by that many bytes
+|`<utf8;z8>` |UTF-8 string: `z8` byte-length prefix followed by that many UTF-8 bytes
+|`% field %` |VLE-encoded integer field in a byte diagram
+|`~ field ~` |Variable-length byte sequence in a byte diagram
+|`+--+` |Fixed-width byte boundary in a byte diagram
+|===
+
+== Wire Diagram Conventions
+
+In wire diagrams:
+
+----
+[header : u8]          fixed 1-byte field
+% length : z32 %       VLE-encoded field
+~  [u8 × len]  ~       variable-length byte sequence
++---------------+      byte boundary (row separator)
+if F==1: ...           field present only when flag F is set
+----
+
+== Byte and Bit Order
+
+All multi-byte fixed-width integers use *little-endian* byte order unless otherwise stated.
+
+Bit positions within a byte run from 0 (least-significant) to 7 (most-significant).
+
+== RFC 2119 Conformance Language
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this specification
+are to be interpreted as described in https://www.rfc-editor.org/rfc/rfc2119[RFC 2119].
+
+== Cross-References
+
+References within this specification use the Antora xref syntax:
+`+xref:module:page.adoc[Link text]+`.
+
+References to external standards cite the standard by name or RFC number in brackets.

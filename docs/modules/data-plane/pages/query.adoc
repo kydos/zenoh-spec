@@ -1,0 +1,214 @@
+= Query (REQUEST / QUERY)
+:description: Wire format and semantics of the REQUEST network message and its QUERY data sub-message.
+
+A _Query_ requests data from all xref:concepts:entities.adoc#queryable[Queryables] whose declared key expression intersects the query key expression.
+The querier receives zero or more xref:reply.adoc[RESPONSE] messages, followed by exactly one RESPONSE_FINAL from each independent source.
+
+== Message Layering
+
+A query on the wire consists of three layers:
+
+----
+[Transport layer]
+  FRAME (0x05) with seq_num + QoS extension
+    [Network layer]
+      REQUEST (0x1C) with key_expr + extensions
+        [Data layer]
+          QUERY (0x03) with consolidation + parameters + extensions
+----
+
+== REQUEST Network Message (0x1C)
+
+REQUEST addresses a key expression, carries a session-local request identifier for correlating replies, and wraps a QUERY data sub-message.
+
+=== Wire Format
+
+----
+Flags:
+  N  If N==1, key expression suffix is present.
+  M  If M==1, WireExpr scope is sender's mapping space; else receiver's.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N| REQUEST |   ID = 0x1C
++-+-+-+---------+
+% request_id:z32%   VLE request identifier (scoped to this session)
++---------------+
+% key_scope:z16 %   VLE ExprId (0 = global scope)
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16>
++---------------+
+~  [req_exts]   ~   if Z==1
++---------------+
+~  RequestBody  ~   QUERY (0x03) sub-message
++---------------+
+----
+
+The `request_id` MUST fall within the range `[0, 2^RID_bits − 1]` where `RID_bits` is determined by the negotiated `RID` resolution (default 32-bit).
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`N` |5 |0x20
+|`M` |6 |0x40
+|`Z` |7 |0x80
+|===
+
+=== REQUEST Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64  |N |QoS
+|0x2 |ZBuf |N |Timestamp
+|0x3 |Z64  |Y |NodeId
+|0x4 |Z64  |Y |QueryTarget
+|0x5 |Z64  |N |Budget (max response count)
+|0x6 |Z64  |N |Timeout
+|===
+
+==== QueryTarget Extension (Z64, ID=0x4, M=true)
+
+Controls which matching queryables receive the query:
+
+[cols="1,1,3"]
+|===
+|Value |Name |Meaning
+
+|0x00 |BestMatching |Route to the single best-matching queryable **(default)**
+|0x01 |All |Deliver to all matching queryables
+|0x02 |AllComplete |Deliver to all matching queryables with the `Complete` flag set
+|===
+
+==== Budget Extension (Z64, ID=0x5, M=false)
+
+A VLE-encoded non-zero `u32` upper bound on the number of RESPONSE messages the querier is willing to accept.
+Absent = unlimited.
+Routers SHOULD stop forwarding RESPONSE messages once the budget is reached.
+
+==== Timeout Extension (Z64, ID=0x6, M=false)
+
+A VLE-encoded timeout in *milliseconds* (`u64`).
+After this duration the querier stops waiting for additional replies.
+Absent = no timeout enforced by the querier (the querier MAY impose an internal timeout).
+
+== QUERY Data Sub-Message (0x03)
+
+QUERY is the body of a REQUEST message.
+It describes the query semantics: consolidation mode, an optional parameters string, and optional source info.
+
+=== Wire Format
+
+----
+Flags:
+  C  If C==1, a ConsolidationMode byte is present.
+  P  If P==1, a parameters string is present.
+  Z  If Z==1, extension chain follows.
+
+  7 6 5 4 3 2 1 0
+ +-+-+-+-+-+-+-+-+
+ |Z|P|C|  QUERY  |   ID = 0x03
+ +-+-+-+---------+
+ |consolidation  |   if C==1: ConsolidationMode (u8)
+ +---------------+
+ ~ ps: <u8;z16>  ~   if P==1: query parameters string (UTF-8, not NUL-terminated)
+ +---------------+
+ ~  [qry_exts]   ~   if Z==1
+ +---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`C` |5 |0x20
+|`P` |6 |0x40
+|`Z` |7 |0x80
+|===
+
+=== ConsolidationMode Values (u8)
+
+[cols="1,2,3"]
+|===
+|Value |Name |Meaning
+
+|0x00 |Auto      |Apply consolidation based on queryable preferences **(default)**
+|0x01 |None      |No consolidation; all samples forwarded as-is
+|0x02 |Monotonic |Forward a sample unless one with a newer timestamp was already sent for the same key
+|0x03 |Latest    |Hold all samples and send only the set with the highest timestamp per key
+|===
+
+=== Parameters String
+
+When `P==1`, an arbitrary UTF-8 string with application-defined semantics.
+Common convention is `key=value` pairs separated by `&` (analogous to URL query strings), but Zenoh does not enforce any format.
+
+=== QUERY Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |ZBuf |N |**SourceInfo** — identifies the originating querier
+|0x3 |ZBuf |N |**QueryBody** — value payload attached to the query (e.g., for PUT-with-query patterns)
+|0x4 |Unit |Y |**Shm** for QueryBody (feature-gated; implies SHM-capable receiver)
+|0x5 |ZBuf |N |**Attachment** — user-defined key/value metadata
+|===
+
+==== QueryBody Extension (ZBuf, ID=0x3, M=false)
+
+Attaches a value payload to the query.
+ZBuf payload:
+
+----
+~   encoding    ~   Encoding field (z32 with S-bit + optional schema)
++---------------+
+~ pl: <u8;z32>  ~   Query body payload bytes
+----
+
+== Request/Response Flow
+
+----
+A                   B₁                  B₂
+|   REQUEST         |                   |
+|─────────────────>|                   |
+|──────────────────────────────────────>|   (routed to matching queryables)
+|                   |                   |
+|       RESPONSE    |                   |   (zero or more from B₁)
+|<─────────────────|                   |
+|       RESPONSE    |                   |
+|<─────────────────|                   |
+|   RESPONSE_FINAL  |                   |   (from B₁ — no more replies from B₁)
+|<─────────────────|                   |
+|                   |     RESPONSE      |   (from B₂)
+|<──────────────────────────────────── |
+|   RESPONSE_FINAL  |                   |   (from B₂)
+|<──────────────────────────────────── |
+----
+
+A querier considers the query complete when it has received a RESPONSE_FINAL from each independent source, the Timeout extension expires, or the Budget is exhausted.
+
+== Complete REQUEST → QUERY Wire Layout
+
+----
+[u16 LE]                    TCP length prefix
+[FRAME header]              Z|X|R|0x05
+% seq_num %
+[FrameExts]                 QoS priority extension if Z
+  [REQUEST header]          Z|M|N|0x1C
+  % request_id %            VLE
+  % key_scope %             VLE
+  [~ key_suffix ~]          if N
+  [req_exts]                QoS, Timestamp, NodeId, Target, Budget, Timeout
+  [QUERY header]            Z|P|C|0x03
+  [consolidation byte]      if C
+  [~ parameters ~]          if P: <u8;z16>
+  [qry_exts]                SourceInfo, QueryBody, Shm, Attachment
+----

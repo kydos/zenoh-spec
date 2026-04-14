@@ -1,0 +1,55 @@
+= Routing
+:description: How Zenoh routes declarations and data messages across the network.
+
+Routing in Zenoh is _declaration-driven_: data messages are forwarded only along paths established by subscriber, queryable, and token declarations.
+No topology configuration is required at the data level; routing tables are built automatically from declarations.
+
+== Declaration Routing
+
+When an entity is declared (e.g., a Subscriber on `sensors/**`), the declaration is propagated through the network via DECLARE messages so that intermediate nodes can build forwarding tables.
+
+Propagation rules:
+
+* A Router MUST propagate declarations to all connected Routers, Peers, and Clients except the session from which the declaration arrived.
+* A Peer MUST propagate declarations to its directly connected neighbours except the session from which the declaration arrived.
+* A declaration MUST NOT be forwarded back to the session from which it arrived (loop prevention).
+* The NodeId extension (ID=0x3, M=true) in network messages carries the hop-local session identifier of the last forwarder; routers use this to implement per-hop loop prevention.
+
+== Data Routing (PUSH)
+
+A PUSH message is forwarded to every session that has a matching subscriber declaration for the PUSH key expression (i.e., whose declared key expression _intersects_ the PUSH key expression).
+
+Each PUSH carries a NodeId extension set to the session that delivered the message on this hop.
+Routers MUST NOT forward PUSH back to the session identified by NodeId.
+
+== Query Routing (REQUEST / RESPONSE)
+
+A REQUEST message is forwarded to every session that has a matching queryable declaration.
+The query target extension controls exactly which queryables receive the query:
+
+* `BestMatching` — the router selects the single best-matching queryable.
+* `All` — all matching queryables receive the query.
+* `AllComplete` — all matching queryables with the `complete` flag receive the query.
+
+RESPONSE messages are routed back to the originating querier session.
+Each router on the return path correlates the RESPONSE to the REQUEST using the `request_id` field.
+RESPONSE_FINAL MUST be sent once per independent source; intermediate routers MAY aggregate RESPONSE_FINAL messages.
+
+== Interest-Based Late Joining
+
+When a node joins an existing network, it sends an INTEREST message (see xref:session:interests.adoc[]) to its peer requesting a snapshot of current declarations.
+The peer responds with DECLARE messages for all matching entities, followed by D_FINAL to signal completion.
+
+This mechanism ensures that a late-joining node acquires a complete view of the current network state without a global reset or pre-provisioned configuration.
+
+== Key Expression Matching
+
+Routing decisions are based on _key expression intersection_: a PUSH addressed to key expression `A` is forwarded to all sessions with a subscriber declared on key expression `B` where `A` and `B` intersect (there exists at least one concrete key matching both).
+
+See xref:concepts:key-expressions.adoc[] for the intersection and inclusion semantics.
+
+== Forwarding Loop Prevention
+
+The NodeId extension (carried in PUSH, REQUEST, and DECLARE) identifies the session that last forwarded the message.
+Routers MUST NOT forward a message back to the session identified by NodeId.
+When a router generates a message itself (not forwarding), NodeId is set to 0.

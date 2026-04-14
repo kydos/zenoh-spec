@@ -1,0 +1,47 @@
+= Access Control
+:description: Access control rules for restricting Zenoh operations per session.
+
+_Access control_ restricts which operations a session is permitted to perform on which key expressions.
+It is evaluated locally by each node based on the authenticated identity of the remote session.
+
+== Model
+
+Access control in Zenoh is _rule-based_:
+a list of rules is evaluated in priority order; the first matching rule's `permission` applies.
+If no rule matches, the default action is *deny*.
+
+== Rule Structure
+
+A rule consists of:
+
+`subject`::
+Identifies the sessions the rule applies to.
+May be a TLS certificate CN/SAN, a username, or a wildcard.
+
+`key_expr`::
+The key expression this rule covers.
+A rule matches an operation if the operation key expression intersects or is included by the rule's key expression.
+
+`flows`::
+Which data flows the rule applies to: `Ingress`, `Egress`, or both.
+
+`actions`::
+The operations governed by this rule:
+`Put`, `Delete`, `Get`, `DeclareSubscriber`, `DeclarePublisher`, `DeclareQueryable`, `DeclareToken`.
+
+`permission`::
+`Allow` or `Deny`.
+
+== Evaluation Order
+
+. Rules are evaluated in declaration order.
+. The first rule whose `subject`, `key_expr`, `flows`, and `actions` all match the operation is applied.
+. If no rule matches, the operation is *denied* by default.
+
+// TODO: Define whether "intersects" or "includes" is used for key expression matching in rules.
+// TODO: Define whether rule evaluation is per-message or per-declaration.
+
+== Configuration
+
+Access control rules are configured out-of-band (e.g., in a configuration file or management API).
+The exact configuration format is implementation-defined; this specification defines the rule model and evaluation semantics only.

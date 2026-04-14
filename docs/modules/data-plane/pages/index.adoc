@@ -1,0 +1,45 @@
+= Data Plane
+:description: The Zenoh data plane — push, query, and reply message flows.
+
+The _data plane_ handles the exchange of application data between Zenoh entities.
+It consists of two independent flows: pub/sub (push) and request/reply (query).
+
+== Push Flow (Pub/Sub)
+
+----
+Publisher         Router(s)          Subscriber
+     |                |                   |
+     |─ PUSH(PUT) ───>|─── PUSH(PUT) ────>|   publish value
+     |                |                   |
+     |─ PUSH(DEL) ───>|─── PUSH(DEL) ────>|   delete resource
+----
+
+A xref:push.adoc[PUSH] message delivers a value (PUT) or a deletion notification (DEL) to all matching subscribers.
+PUSH messages are carried inside FRAME transport messages.
+
+== Query/Reply Flow
+
+----
+Querier           Router(s)          Queryable
+     |                |                   |
+     |─ REQUEST ─────>|──── REQUEST ─────>|   query
+     |                |                   |
+     |<─ RESPONSE ────|<──── RESPONSE ────|   zero or more replies
+     |<─ RESPONSE ────|<──── RESPONSE ────|
+     |<─ RESP_FINAL ──|<──── RESP_FINAL ──|   end of replies
+----
+
+A xref:query.adoc[REQUEST] message queries all matching xref:concepts:entities.adoc#queryable[Queryables].
+Each Queryable responds with zero or more xref:reply.adoc[RESPONSE] messages followed by a xref:reply.adoc#final[RESPONSE_FINAL] that marks the end of its replies.
+
+== Message Nesting
+
+Data-plane messages are nested across three layers:
+
+----
+Transport:  FRAME (seq_num, channel)
+Network:      PUSH / REQUEST / RESPONSE / RESPONSE_FINAL
+Data:           PUT / DEL / QUERY / REPLY / ERR
+----
+
+See xref:wire:message-format.adoc[] for the complete byte-level reference.

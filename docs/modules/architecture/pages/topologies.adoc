@@ -1,0 +1,40 @@
+= Topologies
+:description: Network topology configurations supported by Zenoh.
+
+Zenoh is topology-agnostic: the same wire protocol operates across a range of deployment patterns.
+
+== Peer-to-Peer Mesh
+
+All nodes are Peers.
+Each Peer discovers others via multicast scouting and establishes direct sessions with each peer in range.
+
+Use cases::
+Local LAN applications, robotics, research environments.
+
+// TODO: Diagram and routing behaviour for full/partial meshes.
+
+== Client–Router
+
+Clients attach to one or more Routers.
+Routers form a backbone that forwards messages between Clients.
+
+Use cases::
+IoT deployments, constrained-device environments.
+
+// TODO: Diagram single-router and multi-router variants.
+
+== Routed (Router Federation)
+
+Multiple Routers interconnect to form a geo-distributed backbone.
+Peers and Clients attach to their local Router.
+
+Use cases::
+Cloud-edge-device continuum, multi-site deployments.
+
+// TODO: Diagram hierarchical and flat router federation.
+
+== Hybrid
+
+Any combination of the above topologies: local peer meshes attached to a federated router backbone, with constrained Clients at the leaves.
+
+// TODO: Diagram and describe split-horizon considerations.

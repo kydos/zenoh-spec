@@ -1,0 +1,20 @@
+= Concepts
+:description: Core abstractions of the Zenoh protocol.
+
+This section defines the fundamental abstractions on which the Zenoh protocol is built.
+A solid understanding of these concepts is prerequisite to reading the protocol sections.
+
+== Summary
+
+xref:key-expressions.adoc[Key Expressions]::
+A hierarchical, wildcard-capable naming scheme used to address _resources_.
+
+xref:entities.adoc[Entities]::
+The protocol roles an application session can host:
+_Publisher_, _Subscriber_, _Queryable_, _Storage_, and _Token_.
+
+xref:qos.adoc[Quality of Service]::
+Per-message QoS properties that govern delivery priority, reliability, and congestion behaviour.
+
+xref:encoding.adoc[Value Encoding]::
+How the content type and optional schema of a value payload is described on the wire.

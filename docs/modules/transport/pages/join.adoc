@@ -1,0 +1,122 @@
+= JOIN
+:description: Wire format and semantics of the JOIN message for multicast session management.
+
+JOIN is the multicast counterpart of the xref:session:open-accept.adoc[INIT/OPEN] handshake.
+It is sent periodically on multicast transports to advertise a node's session parameters and current sequence numbers.
+No handshake is required: any node that receives a JOIN can immediately begin exchanging network messages with that peer.
+
+== Overview
+
+On a multicast transport, there is no single point-to-point connection; any number of nodes may listen on the multicast group.
+JOIN replaces the unicast INIT/OPEN exchange by bundling all negotiation parameters into a single self-contained advertisement.
+
+JOIN MUST be sent periodically throughout the session lifetime.
+If a node stops receiving JOIN messages from a peer within the JOIN lease period, it considers that peer offline and withdraws all declarations attributed to it.
+
+== Wire Format
+
+----
+Flags:
+  T  If T==1, lease duration is in seconds.
+     If T==0, lease duration is in milliseconds.
+  S  If S==1, resolution + batch_size fields are present.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|S|T|   JOIN  |   ID = 0x07
++-+-+-+---------+
+|    version    |   Protocol version (u8). Current: 0x09
++---------------+
+|zid_len|X|X|WAI|   Packed byte (identical layout to INIT)
++-+-+-+-+-+-+-+-+
+~      ZID      ~   ZenohID: (1 + zid_len) bytes
++---------------+
+|X|X|X|X|RID|FSN|   if S==1: Resolution byte
++---------------+
+|   batch_lo    |   if S==1: Maximum batch size (u16 LE)
++---------------+
+|   batch_hi    |
++---------------+
+%    lease      %   VLE-encoded lease duration (unit per T flag)
++---------------+
+% next_sn_re    %   VLE-encoded next reliable SN (default / non-QoS channel)
++---------------+
+% next_sn_be    %   VLE-encoded next best-effort SN (default channel)
++---------------+
+~  [JoinExts]   ~   if Z==1
++---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`T` |5 |0x20
+|`S` |6 |0x40
+|`Z` |7 |0x80
+|===
+
+=== Packed Byte
+
+Identical layout to INIT — see xref:session:open-accept.adoc[].
+
+=== Resolution Byte
+
+Identical to INIT — see xref:wire:primitives.adoc#_resolution_byte[Resolution Byte].
+Default: `0x0A` (FSN = 32-bit, RID = 32-bit).
+
+=== Sequence Numbers
+
+`next_sn_re`:: The _next_ sequence number the sender will use on the reliable channel (default, non-QoS priority).
+`next_sn_be`:: The _next_ sequence number the sender will use on the best-effort channel.
+
+When the QoS extension is present, per-priority SNs in the extension supersede the body SNs for their respective priorities.
+
+== JOIN Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |ZBuf |Y |**QoS SNs** — per-priority next SNs (see below)
+|0x2 |ZBuf |Y |**Shm** — shared-memory capabilities
+|0x7 |Z64  |N |**Patch** — protocol patch version
+|===
+
+=== QoS SN Extension (ZBuf, ID=0x1, M=true)
+
+Carries an array of 8 `PrioritySn` entries (one per priority level, 0=Control … 7=Background), each containing two VLE-encoded u32 values:
+
+----
+For each of the 8 priority levels (0 to 7):
+  % reliable_sn    %   next reliable SN for this priority level
+  % best_effort_sn %   next best-effort SN for this priority level
+----
+
+Total size: 8 × 2 × VLE(u32) = 16–80 bytes depending on SN values.
+
+When this extension is present, its per-priority SNs MUST be used in preference to the body-level `next_sn_re` and `next_sn_be` fields for their respective priorities.
+
+== Multicast Session Flow
+
+----
+A           B           C
+|           |           |
+|  JOIN     |           |   periodic, multicast
+|─────────>|           |
+|──────────────────────>|
+|           |           |
+|     JOIN  |           |   B's periodic advertisement
+|<─────────|           |
+|<─────────────────────|
+|           |           |
+|  FRAME    |           |   network messages on multicast
+|─────────>|           |
+|──────────────────────>|
+----
+
+No INIT/OPEN handshake is used in multicast mode.
+JOIN provides all the information needed for participants to join and leave the multicast session.

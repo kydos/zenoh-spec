@@ -1,0 +1,34 @@
+= Architecture
+:description: High-level system architecture of Zenoh — node roles, network topologies, and routing.
+
+Zenoh operates seamlessly across heterogeneous environments by abstracting over the underlying network topology.
+A Zenoh network is a graph of _nodes_, each of which plays one of three xref:roles.adoc[roles].
+
+== Layered Model
+
+[source]
+----
+┌─────────────────────────────────────┐
+│           Application API           │
+├─────────────────────────────────────┤
+│     Data Plane  │   Query Plane      │  ← Push / Get / Reply
+├─────────────────────────────────────┤
+│            Session Layer            │  ← Open/Accept, Declarations, Interests
+├─────────────────────────────────────┤
+│           Transport Layer           │  ← Batching, Fragmentation, KeepAlive
+├──────────┬──────────┬───────────────┤
+│   TCP    │   UDP    │  QUIC / TLS … │  ← Network links
+└──────────┴──────────┴───────────────┘
+----
+
+== Node Roles
+
+See xref:roles.adoc[] for the normative definition of _Router_, _Peer_, and _Client_.
+
+== Topologies
+
+See xref:topologies.adoc[] for deployment patterns including peer-to-peer meshes, client-router, and hierarchical router networks.
+
+== Routing
+
+See xref:routing.adoc[] for how declarations and data messages are propagated across the network.

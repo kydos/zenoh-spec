@@ -1,0 +1,64 @@
+= Entities
+:description: The protocol roles available to Zenoh applications — Publisher, Subscriber, Queryable, Storage, and Liveliness Token.
+
+A Zenoh _session_ hosts one or more _entities_, each representing a named role in the pub/sub/query model.
+Entities are not all announced via protocol declarations — only subscribers, queryables, and tokens have corresponding declaration messages.
+
+== Publisher
+
+A _Publisher_ sends data values or deletion notifications to a key expression using xref:data-plane:push.adoc[PUSH → PUT/DEL] messages.
+
+Publishers do *not* have a dedicated declaration message in the Zenoh protocol.
+The publisher's existence is implicit in the PUSH messages it emits.
+Routers use subscriber declarations (not publisher declarations) to build forwarding tables for PUSH messages.
+
+Each publication carries:
+
+* A key expression (via WireExpr).
+* An optional xref:qos.adoc[QoS] descriptor.
+* An optional xref:encoding.adoc[Encoding] (in the PUT sub-message).
+* An optional HLC Timestamp.
+
+== Subscriber
+
+A _Subscriber_ receives data delivered to matching key expressions.
+Subscribers are announced via xref:session:declarations.adoc#_d_subscriber_0x02_declare_subscriber[D_SUBSCRIBER] declarations.
+Data arrives as xref:data-plane:push.adoc[PUSH] messages forwarded by routers.
+
+The Zenoh protocol uses a push delivery model only: data is forwarded to the subscriber as it arrives.
+
+== Queryable
+
+A _Queryable_ responds to queries addressed to matching key expressions.
+It implements a request/reply pattern and may return zero or more replies.
+Queryables are announced via xref:session:declarations.adoc#_d_queryable_0x04_declare_queryable[D_QUERYABLE] declarations.
+
+Key declaration metadata:
+
+`complete`:: If `1`, the queryable guarantees it can answer _all_ queries for its key expression (used by the `AllComplete` query target).
+`distance`:: Hop count from this session to the queryable (0 = same process).
+
+Queries arrive as xref:data-plane:query.adoc[REQUEST → QUERY] messages; replies are sent as xref:data-plane:reply.adoc[RESPONSE → REPLY/ERR] messages.
+
+== Storage
+
+A _Storage_ is a Queryable that also persists published data.
+It subscribes to a key expression (via D_SUBSCRIBER) and serves historical values in response to queries (via D_QUERYABLE).
+A storage combines subscriber and queryable semantics within a single entity.
+
+Storage is a higher-level concept; the wire protocol represents it using the same D_SUBSCRIBER and D_QUERYABLE declarations as any other entity.
+
+== Liveliness Token
+
+A _Token_ asserts the liveliness of a named entity on a key expression.
+While a token is alive (declared), subscribers to the liveliness key expression see it as "present"; when the token is undeclared or its session closes, they see it as "gone".
+
+Tokens are announced via xref:session:declarations.adoc#_d_token_0x06_declare_liveliness_token[D_TOKEN] and retracted via xref:session:declarations.adoc#_u_token_0x07_undeclare_liveliness_token[U_TOKEN].
+
+== Key Expressions and Entity Scope
+
+All entities are bound to a xref:key-expressions.adoc[key expression].
+Key expressions use wildcard matching (single-level `*` and multi-level `**`) to allow a single subscriber or queryable to cover a range of resources.
+
+Entity identifiers (`subs_id`, `qbls_id`, `token_id`) are locally scoped to the declaring session.
+They are used to match `Declare` and `Undeclare` messages for the same entity across the session lifetime.

@@ -1,0 +1,41 @@
+= Security
+:description: Security model, authentication, and access control in Zenoh.
+
+Zenoh provides a layered security model addressing both transport-level and application-level concerns.
+
+== Layers
+
+[cols="1,3"]
+|===
+|Layer |Mechanism
+
+|Transport security
+|TLS 1.3 (over TCP) and QUIC provide link encryption, integrity, and optional mutual authentication via X.509 certificates.
+See xref:transport:links.adoc[].
+
+|Session authentication
+|The `ext_auth` extension in xref:session:open-accept.adoc[Open/Accept] enables challenge-response authentication before a session is established.
+See xref:authentication.adoc[].
+
+|Access control
+|Per-session, per-operation rules restrict which key expressions a session may publish to, subscribe to, or query.
+See xref:access-control.adoc[].
+|===
+
+== Security Properties
+
+This specification aims to provide:
+
+Confidentiality::
+Data in transit is encrypted on authenticated links.
+
+Integrity::
+Data cannot be silently tampered with in transit.
+
+Authenticity::
+Nodes can verify the identity of their peers before exchanging data.
+
+Authorisation::
+Operations on key expressions are restricted by policy.
+
+See xref:threat-model.adoc[] for the threats this model is designed to address.

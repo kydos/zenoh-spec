@@ -1,0 +1,112 @@
+= Glossary
+:description: Definitions of terms used in the Zenoh Protocol Specification.
+
+[glossary]
+Batch::
+A contiguous sequence of one or more Zenoh messages transmitted as a single unit on a transport link.
+See xref:transport:batching.adoc[].
+
+Client::
+A Zenoh node role that connects to exactly one Router or Peer and delegates all routing.
+See xref:architecture:roles.adoc[].
+
+Chunk::
+A path-like segment of a key expression, delimited by `/`.
+See xref:concepts:key-expressions.adoc[].
+
+Declaration::
+A control message that announces or retracts an entity (Subscriber, Queryable, Token) or a key expression alias within a session.
+See xref:session:declarations.adoc[].
+
+Entity::
+A named protocol role hosted by a Zenoh session: Publisher, Subscriber, Queryable, Storage, or Token.
+See xref:concepts:entities.adoc[].
+
+Fragment::
+A portion of a large Zenoh message that exceeds the transport MTU, split across multiple frames.
+See xref:transport:fragmentation.adoc[].
+
+HLC::
+Hybrid Logical Clock. A clock algorithm that produces monotonically increasing timestamps combining physical time and a logical counter, used to order Zenoh events globally.
+
+Interest::
+A session message that requests a snapshot of current matching declarations from a peer, used by late-joining nodes.
+See xref:session:interests.adoc[].
+
+Key Expression (KE)::
+A UTF-8 string used to address Zenoh resources, supporting wildcard characters `*` and `**`.
+See xref:concepts:key-expressions.adoc[].
+
+Lease::
+The maximum duration without receiving any message (including KeepAlive) after which a session is declared dead.
+See xref:transport:keep-alive.adoc[].
+
+Locator::
+A network address string of the form `<protocol>/<address>:<port>` used to establish a transport link.
+
+Peer::
+A Zenoh node role that may connect to other Peers and Routers and perform limited message forwarding.
+See xref:architecture:roles.adoc[].
+
+Publisher::
+An entity that sends data values or deletions to a key expression.
+See xref:concepts:entities.adoc[].
+
+Query::
+A request for data addressed to a key expression, handled by matching Queryables.
+See xref:data-plane:query.adoc[].
+
+Queryable::
+An entity that responds to queries with zero or more Reply messages.
+See xref:concepts:entities.adoc[].
+
+Reply::
+A response to a Query, containing a value, an error, or a deletion notification.
+See xref:data-plane:reply.adoc[].
+
+Resource::
+A named datum identified by a concrete key (a key expression without wildcards).
+
+Router::
+A Zenoh node role that actively routes messages between sessions by maintaining a full routing table.
+See xref:architecture:roles.adoc[].
+
+Scouting::
+The sub-protocol by which Zenoh nodes discover each other on a network.
+See xref:scouting:index.adoc[].
+
+Session::
+A logical association between two Zenoh nodes, established over one or more transport links via the INIT/OPEN handshake (unicast) or JOIN (multicast).
+See xref:session:index.adoc[].
+
+Storage::
+A special Queryable that also subscribes to and persists published data.
+See xref:concepts:entities.adoc[].
+
+Subscriber::
+An entity that receives data delivered to matching key expressions.
+See xref:concepts:entities.adoc[].
+
+Token::
+An entity that asserts liveliness on a key expression; its presence and disappearance can be observed by other sessions.
+See xref:concepts:entities.adoc[].
+
+Transport Link::
+A point-to-point or multicast communication channel underlying a Zenoh session.
+See xref:transport:links.adoc[].
+
+VLE::
+Variable-Length Encoding. The compact integer encoding scheme used in the Zenoh binary wire format.
+See xref:wire:primitives.adoc#vle[].
+
+WireExprId::
+A session-local numeric alias for a key expression, declared to reduce wire overhead on repeated references.
+See xref:session:declarations.adoc[].
+
+ZenohId::
+A variable-length (1–16 bytes) opaque unique identifier assigned to each Zenoh node, generated randomly at startup.
+See xref:wire:primitives.adoc#_zenohid_zid[ZenohID].
+
+WhatAmI::
+A 2-bit field indicating the role of a Zenoh node: Router (`0b00`), Peer (`0b01`), or Client (`0b10`).
+See xref:wire:primitives.adoc#_whatami_node_role[].

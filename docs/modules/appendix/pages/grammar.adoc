@@ -1,0 +1,58 @@
+= Formal Grammar
+:description: ABNF grammar for key expressions, locators, and query parameters.
+
+The grammars below use the notation defined in https://www.rfc-editor.org/rfc/rfc5234[RFC 5234] (ABNF).
+
+== Key Expressions
+
+[source,abnf]
+----
+key-expr     = chunk *("/" chunk)
+chunk        = 1*(unreserved / pct-encoded) / wild1 / wildN
+wild1        = "*"
+wildN        = "**"
+unreserved   = ALPHA / DIGIT / "-" / "_" / "." / "~" / "@" / "$"
+pct-encoded  = "%" HEXDIG HEXDIG
+----
+
+Constraints (not expressible in ABNF):
+
+* A `**` chunk MUST NOT be adjacent to another `*` or `**` chunk.
+* A key expression MUST NOT contain an empty chunk (i.e. `//` is invalid).
+* A key expression MUST NOT end with `/`.
+
+// TODO: Resolve any DSL extension syntax (e.g., `$*`, `**` within a mixed chunk) for v2.0.0.
+
+== Locators
+
+[source,abnf]
+----
+locator       = protocol "/" address
+protocol      = 1*(ALPHA / DIGIT)
+address       = ( ip4-literal / ip6-literal / hostname ) ":" port
+ip4-literal   = dec-octet 3( "." dec-octet )
+dec-octet     = DIGIT              ; 0–9
+              / %x31-39 DIGIT      ; 10–99
+              / "1" 2DIGIT         ; 100–199
+              / "2" %x30-34 DIGIT  ; 200–249
+              / "25" %x30-35       ; 250–255
+ip6-literal   = "[" IPv6address "]"
+IPv6address   = <as defined in RFC 5952>
+hostname      = *( label "." ) label
+label         = ALPHA *( ALPHA / DIGIT / "-" ) ALPHA
+              / ALPHA
+port          = 1*5DIGIT  ; 0–65535
+----
+
+== Query Parameters
+
+[source,abnf]
+----
+parameters    = [ parameter *( ";" parameter ) ]
+parameter     = key [ "=" value ]
+key           = 1*param-char
+value         = 1*param-char
+param-char    = unreserved / pct-encoded
+----
+
+// TODO: Define reserved parameter names (if any) used by the protocol itself.

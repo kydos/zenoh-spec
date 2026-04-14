@@ -1,0 +1,108 @@
+= HELLO
+:description: Wire format and semantics of the HELLO message used to respond to SCOUT.
+
+A HELLO message is sent in response to a xref:scout.adoc[SCOUT] whose `WhatAmIMatcher` bitmap matches the responding node's role.
+HELLO advertises the node's identity, role, and the locators at which it can be reached for session establishment.
+
+== Behaviour
+
+* A node SHOULD respond with a HELLO in unicast when a received SCOUT's `WHAT` bitmap includes the node's role.
+* A node MUST NOT respond when the SCOUT carries a ZenohID (`I==1`) that matches the node's own ZenohID.
+* A node MAY send HELLO messages periodically in multicast to advertise its presence without a preceding SCOUT (passive advertisement mode).
+* When `L==0`, the transport source address of the HELLO packet is implicitly treated as the single locator.
+
+=== Flow — Response to SCOUT
+
+----
+A                   B
+|       SCOUT       |
+|─────────────────>|
+|                   |
+|       HELLO       |   unicast reply
+|<─────────────────|
+----
+
+=== Flow — Periodic Advertisement
+
+----
+A                   B
+|       HELLO       |   multicast, periodic
+|─────────────────>|
+~        ...        ~
+|       HELLO       |
+|─────────────────>|
+----
+
+== Wire Format
+
+----
+Flags:
+  L  If L==1, explicit locator list is present.
+     If L==0, the source address of the packet is the locator.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|L|  HELLO  |
++-+-+-+---------+
+|    version    |   Protocol version (u8); current value: 0x09
++---------------+
+|zid_len|X|X|WAI|   Packed byte (see below)
++-+-+-+-+-+-+-+-+
+~      ZID      ~   ZenohID (1 + zid_len bytes)
++---------------+
+% loc_count: z8 %   if L==1: number of locator strings
+~   locators    ~   if L==1: loc_count × <utf8;z8> locator strings
++---------------+
+~  [HelloExts]  ~   if Z==1: extension chain
++---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1"]
+|===
+|Flag |Bit |Value
+
+|`L` |5 |0x20
+|`Z` |7 |0x80
+|===
+
+=== Packed Byte Layout
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|  zid_len  |WAI|
++-------+-+-+---+
+----
+
+[cols="1,1,3"]
+|===
+|Sub-field |Bits |Meaning
+
+|`zid_len` |7:4 |Actual ZID byte count = 1 + zid_len (range 1–16)
+|`X`       |3:2 |Reserved (MUST be zero)
+|`WAI`     |1:0 |WhatAmI: 0b00=Router, 0b01=Peer, 0b10=Client
+|===
+
+=== Fields
+
+`version` (u8):: Protocol version.  MUST be `0x09`.
+`zid_len` / `WAI` (packed byte):: See packed byte layout above.
+`ZID` (1–16 bytes):: The sender's ZenohID.
+`loc_count` (z8, present when `L==1`):: Number of locator strings.
+`locators` (present when `L==1`):: `loc_count` locator strings, each encoded as `<utf8;z8>`.
+
+=== Locator Format
+
+Locators follow the format `protocol/address:port`, for example:
+
+----
+tcp/192.168.1.1:7447
+udp/224.0.0.224:7447
+tls/192.168.1.1:7448
+tcp/[::1]:7447
+----
+
+Protocol tokens are case-insensitive.  The address portion may be an IPv4 address, an IPv6 address in brackets, or a hostname.

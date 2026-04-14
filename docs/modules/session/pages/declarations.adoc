@@ -1,0 +1,290 @@
+= Declarations
+:description: Wire format and semantics of DECLARE messages for announcing and retracting protocol entities.
+
+_Declarations_ are control messages exchanged within a session to announce or retract protocol entities: key expression aliases, subscribers, queryables, and liveliness tokens.
+They are carried inside a DECLARE network message and propagated through the network by routers and peers.
+
+== DECLARE Message (0x1E)
+
+A single DECLARE message carries exactly one _declaration sub-message_ in its body.
+
+=== Wire Format
+
+----
+Flags:
+  I  If I==1, an interest_id field is present (this DECLARE is a response to an INTEREST).
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|I| DECLARE |   ID = 0x1E
++-+-+-+---------+
+%interest_id:z32%   if I==1: VLE interest ID this declare responds to
++---------------+
+~  [decl_exts]  ~   if Z==1 (QoS, Timestamp, NodeId)
++---------------+
+~  declaration  ~   DeclareBody sub-message (ID in its own header byte bits 4:0)
++---------------+
+----
+
+=== DECLARE Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64  |N |QoS
+|0x2 |ZBuf |N |Timestamp
+|0x3 |Z64  |Y |NodeId
+|===
+
+== Declaration Sub-Message IDs
+
+[cols="1,1,3"]
+|===
+|ID |Name |Purpose
+
+|0x00 |D_KEYEXPR    |Declare a key expression alias
+|0x01 |U_KEYEXPR    |Undeclare a key expression alias
+|0x02 |D_SUBSCRIBER |Declare a subscriber
+|0x03 |U_SUBSCRIBER |Undeclare a subscriber
+|0x04 |D_QUERYABLE  |Declare a queryable
+|0x05 |U_QUERYABLE  |Undeclare a queryable
+|0x06 |D_TOKEN      |Declare a liveliness token
+|0x07 |U_TOKEN      |Undeclare a liveliness token
+|0x1A |D_FINAL      |Signal end of declarations for an INTEREST
+|===
+
+Each declaration sub-message begins with its own header byte whose bits 4:0 carry the sub-message ID and bits 7:5 carry sub-message-specific flags.
+
+== D_KEYEXPR (0x00) — Declare Key Expression
+
+Registers a mapping from an `ExprId` to a full key expression.
+Subsequent WireExprs may use this ExprId as a scope to avoid repeating the full key string.
+
+----
+Flags:
+  N  If N==1, key suffix is present.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|N| D_KEXPR |   ID = 0x00
++-+-+-+---------+
+%  expr_id:z16  %   VLE — ExprId being assigned (used in future WireExpr scopes)
++---------------+
+% key_scope:z16 %   VLE — scope of the base expression (0 = global)
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16> suffix string
++---------------+
+~  [decl_exts]  ~   if Z==1
++---------------+
+----
+
+`ExprId` values are locally significant within the session.
+An implementation MUST NOT reuse an ExprId until it has been released with `U_KEYEXPR`.
+
+== U_KEYEXPR (0x01) — Undeclare Key Expression
+
+Releases a previously declared ExprId, freeing it for reuse.
+
+----
+Flags:
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X| U_KEXPR |   ID = 0x01
++-+-+-+---------+
+%  expr_id:z16  %   VLE — ExprId to release
++---------------+
+~  [decl_exts]  ~   if Z==1
++---------------+
+----
+
+== D_SUBSCRIBER (0x02) — Declare Subscriber
+
+Announces that the sender wishes to receive data matching a key expression.
+Routers use subscriber declarations to build forwarding tables.
+
+----
+Flags:
+  N  If N==1, key suffix is present.
+  M  If M==1, sender's mapping space; else receiver's.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N|  D_SUB  |   ID = 0x02
++-+-+-+---------+
+%  subs_id:z32  %   VLE — Subscriber entity ID (unique within this session)
++---------------+
+% key_scope:z16 %   VLE ExprId (0 = global scope)
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16>
++---------------+
+~  [decl_exts]  ~   if Z==1
++---------------+
+----
+
+`subs_id` is assigned by the declaring node and is unique per session.
+It is used to match subsequent `U_SUBSCRIBER` messages.
+
+== U_SUBSCRIBER (0x03) — Undeclare Subscriber
+
+Cancels a previously declared subscriber.
+
+----
+Flags:
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X|  U_SUB  |   ID = 0x03
++-+-+-+---------+
+%  subs_id:z32  %   VLE — Subscriber entity ID to cancel
++---------------+
+~  [decl_exts]  ~   if Z==1 (MUST include WireExpr extension 0x0F)
++---------------+
+----
+
+=== WireExpr Extension (ZBuf, ID=0x0F, M=true)
+
+Carries the key expression of the subscriber being undeclared.
+Required so that routers can update forwarding tables without maintaining a reverse subscriber-to-key-expression index.
+
+ZBuf payload:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|X|X|X|X|X|X|M|N|   N=Named (suffix present), M=Mapping
++-+-+-+---------+
+% key_scope:z16 %   VLE ExprId
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16>
+----
+
+== D_QUERYABLE (0x04) — Declare Queryable
+
+Announces that the sender can answer queries matching a key expression.
+
+----
+Flags:
+  N  If N==1, key suffix is present.
+  M  If M==1, sender's mapping space; else receiver's.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N|  D_QBL  |   ID = 0x04
++-+-+-+---------+
+%  qbls_id:z32  %   VLE — Queryable entity ID
++---------------+
+% key_scope:z16 %
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16>
++---------------+
+~  [decl_exts]  ~   if Z==1
++---------------+
+----
+
+=== QueryableInfo Extension (Z64, ID=0x1, M=false)
+
+Provides completeness and distance metadata used for query routing.
+
+Z64 value layout (low 24 bits):
+
+----
+Bit 0 (C): Complete flag
+Bits 17:1: distance (u16, 0 = intra-process / local)
+
+Encoded as: z64_value = ((u64)distance << 1) | (u64)complete
+----
+
+`C (Complete)`:: When set, the queryable guarantees it can answer _all_ queries for its declared key expression.  Used by the `AllComplete` query target to filter.
+`distance`:: Hop count from this session to the queryable (0 = same process, higher = further away).
+
+== U_QUERYABLE (0x05) — Undeclare Queryable
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X|  U_QBL  |   ID = 0x05
++-+-+-+---------+
+%  qbls_id:z32  %   VLE — Queryable entity ID to cancel
++---------------+
+~  [decl_exts]  ~   if Z==1 (MUST include WireExpr extension 0x0F)
++---------------+
+----
+
+WireExpr extension is the same as for `U_SUBSCRIBER`.
+
+== D_TOKEN (0x06) — Declare Liveliness Token
+
+Announces the existence of a named liveliness token.
+A token is a lightweight presence signal: its key expression being alive indicates that the declaring entity is active.
+Subscribers to the liveliness key expression are notified when tokens appear or disappear.
+
+----
+Flags:
+  N  If N==1, key suffix is present.
+  M  If M==1, sender's mapping space; else receiver's.
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|M|N|  D_TKN  |   ID = 0x06
++-+-+-+---------+
+% token_id:z32  %   VLE — Token entity ID
++---------------+
+% key_scope:z16 %
++---------------+
+~  key_suffix   ~   if N==1: <u8;z16>
++---------------+
+~  [decl_exts]  ~   if Z==1
++---------------+
+----
+
+== U_TOKEN (0x07) — Undeclare Liveliness Token
+
+Retracts a previously declared token.
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X|  U_TKN  |   ID = 0x07
++-+-+-+---------+
+% token_id:z32  %   VLE — Token entity ID to retract
++---------------+
+~  [decl_exts]  ~   if Z==1 (MUST include WireExpr extension 0x0F)
++---------------+
+----
+
+WireExpr extension is the same as for `U_SUBSCRIBER`.
+
+== D_FINAL (0x1A) — Declare Final
+
+Signals that all current declarations in response to an INTEREST have been sent.
+The `interest_id` field in the enclosing DECLARE message (`I==1`) correlates this with the original INTEREST.
+
+----
+Flags:
+  Z  If Z==1, extension chain follows.
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|X| D_FINAL |   ID = 0x1A
++-+-+-+---------+
+~  [final_exts] ~   if Z==1
++---------------+
+----
+
+D_FINAL carries no body fields beyond optional extensions.
+
+After D_FINAL, if the INTEREST mode was `CurrentFuture`, the peer continues sending future declarations without the `I` flag (i.e., without the interest_id).
+
+== Declaration Propagation
+
+Declarations MUST be forwarded by routers to all sessions that have expressed interest in the relevant declaration kind and key expression (via INTEREST).
+Implementations MUST deduplicate declarations: a router MUST NOT forward a declaration for an entity it has already advertised to a given session.

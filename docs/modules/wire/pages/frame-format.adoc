@@ -1,0 +1,95 @@
+= Frame Format
+:description: The structure of Zenoh transport frames (batches) on stream and datagram links.
+
+A _frame_ is the unit of transmission on a xref:transport:links.adoc[transport link].
+Frames carry one or more Zenoh messages packed contiguously into a _batch_.
+
+== Stream Links (TCP, TLS, QUIC)
+
+On stream-oriented links, each batch is prefixed with a 2-byte little-endian length field so that the receiver can extract message boundaries:
+
+----
+StreamFrame  = BatchLength Batch
+BatchLength  = u16le       ;; byte length of Batch (max 65 535)
+----
+
+The receiver reads `BatchLength` bytes and decodes the `Batch` in full before processing its messages.
+
+The maximum batch size on stream links is 65 535 bytes (the range of a `u16`), further constrained by the `batch_size` negotiated during xref:session:open-accept.adoc[session establishment].
+
+== Datagram Links (UDP unicast, UDP multicast)
+
+On datagram-oriented links there is no length prefix; the entire datagram payload is the batch:
+
+----
+DatagramFrame = Batch
+----
+
+The maximum batch size on datagram links is determined by the link MTU.
+
+== Batch Contents
+
+A batch is a contiguous sequence of one or more messages:
+
+----
+Batch = 1*Message
+----
+
+Messages are decoded sequentially from the start of the batch until all bytes are consumed.
+A receiver MUST process messages in the order they appear.
+
+=== Transport Messages vs Network Messages
+
+A batch may contain _transport messages_ (INIT, OPEN, CLOSE, KEEP_ALIVE, FRAME, FRAGMENT, JOIN) encoded directly.
+
+_Network messages_ (PUSH, REQUEST, RESPONSE, RESPONSE_FINAL, DECLARE, INTEREST) are NEVER placed directly in a batch.
+They MUST be carried inside a FRAME or FRAGMENT transport message.
+
+=== FRAME — Network Message Container
+
+The FRAME transport message wraps one or more network messages and associates them with a sequence number and reliability channel:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|X|R|  FRAME  |   ID = 0x05; R=1 → reliable channel
++-+-+-+---------+
+%    seq_num    %   VLE sequence number (resolution-dependent)
++---------------+
+~  [FrameExts]  ~   if Z==1: extension chain (e.g., QoS priority)
++---------------+
+~  [NetworkMsg] ~   one or more back-to-back serialised NetworkMessages
++---------------+
+----
+
+NetworkMessages fill the remainder of the batch up to its boundary.
+Each NetworkMessage is self-delimiting via its own header and length fields.
+A single FRAME MUST NOT span two batches; all its NetworkMessages MUST fit within the negotiated batch size.
+
+==== Sequence Numbers
+
+FRAME maintains two independent sequence-number spaces per session:
+
+`Reliable` (`R=1`):: Used for messages that require ordered, loss-free delivery.
+`BestEffort` (`R=0`):: Used for messages that may be lost or arrive out of order.
+
+Both spaces wrap at the limit set by the `FSN` resolution field negotiated during INIT/JOIN.
+Default resolution is 32-bit (max sequence number 2³²−1).
+
+==== QoS Priority (Frame Extension)
+
+When the QoS extension is present (Z64, ID=0x1, M=true), it declares the priority of all network messages in the FRAME.
+This allows the transport layer to select among multiple sequence-number lanes on QoS-capable sessions:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|0|  reserved   |   bits 7:3 — reserved (zero)
+|   priority    |   bits 2:0 — priority class (0=Control, 5=Data default, 7=Background)
++-+-+-+---------+
+----
+
+== Message Ordering
+
+Messages within a batch MUST be processed in the order they appear.
+Sequence numbers provide ordering guarantees across batches on the same channel.

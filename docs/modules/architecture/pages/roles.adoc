@@ -1,0 +1,48 @@
+= Roles
+:description: The three node roles in a Zenoh network — Router, Peer, and Client.
+
+Every Zenoh node operates in exactly one _role_, encoded as a 2-bit `WhatAmI` field (see xref:wire:primitives.adoc#_whatami_node_role[]).
+The role governs which nodes a node may connect to, what routing responsibilities it assumes, and its protocol behaviour during scouting and session establishment.
+
+== Router (WhatAmI = 0b00)
+
+A _Router_ actively routes messages between sessions.
+
+* Participates in router–router scouting and session establishment.
+* Maintains a routing table for all declared key expressions within its routing domain.
+* Forwards PUSH, REQUEST, RESPONSE, DECLARE, and INTEREST messages on behalf of connected Peers and Clients.
+* Handles incoming INTEREST messages by replying with current declarations from all known sessions.
+* May form clusters with other Routers for redundancy and load distribution.
+
+Routers SHOULD connect to other Routers to form a routing backbone.
+
+== Peer (WhatAmI = 0b01)
+
+A _Peer_ connects directly to other Peers and/or to Routers.
+
+* Participates in peer–peer scouting on local network segments.
+* Forwards messages to its immediate neighbours; does not maintain a global routing table.
+* May act as a limited router for directly connected Clients.
+* Suitable for edge devices with moderate resources.
+
+== Client (WhatAmI = 0b10)
+
+A _Client_ connects to exactly one Router or Peer and delegates all routing to its attachment point.
+
+* Does not participate in scouting; the attachment point address is provided by configuration.
+* Sends declarations to its attachment point; the attachment point propagates them to the wider network.
+* Minimal resource footprint — suitable for microcontrollers, no-std environments, and battery-powered devices.
+
+== Role in Protocol Messages
+
+The `WhatAmI` field appears in the following messages:
+
+[cols="1,2"]
+|===
+|Message |Where WhatAmI appears
+
+|SCOUT |In the `WhatAmIMatcher` bitmap (bits 2:0 of packed byte) — describes which roles to discover
+|HELLO |In the `WAI` sub-field (bits 1:0 of packed byte) — announces the sender's role
+|INIT SYN/ACK |In the `WAI` sub-field (bits 1:0 of packed byte) — announces the sender's role
+|JOIN |In the `WAI` sub-field (bits 1:0 of packed byte) — announces the sender's role
+|===

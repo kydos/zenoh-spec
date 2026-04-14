@@ -1,0 +1,5 @@
+.Data Plane
+* xref:index.adoc[Overview]
+* xref:push.adoc[Push (Put & Delete)]
+* xref:query.adoc[Query]
+* xref:reply.adoc[Reply]

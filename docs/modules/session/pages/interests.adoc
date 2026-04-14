@@ -1,0 +1,172 @@
+= Interests
+:description: The INTEREST mechanism for requesting current and future declarations from a peer.
+
+An _Interest_ enables a node to request from its peer a snapshot of all currently active declarations and/or to subscribe to future declaration changes, optionally restricted to a key expression and declaration kind.
+
+This mechanism drives the _lazy-declaration_ model: nodes do not push all their declarations unsolicited.
+Instead, a peer or router sends an INTEREST to pull the current state and subscribe to changes.
+
+== Problem Statement
+
+Without interests, a late-joining node only sees declarations issued _after_ its session was established.
+Pre-existing subscribers, queryables, and tokens would be invisible, breaking routing until those declarations happen to be re-issued.
+The INTEREST mechanism gives late joiners a way to synchronise with the current declaration state.
+
+== Interest Modes
+
+[cols="1,2,4"]
+|===
+|Mode bits (6:5) |Name |Semantics
+
+|`0b00` |Final         |Terminates a previously issued `CurrentFuture` or `Future` interest; no options byte or key expression
+|`0b01` |Current       |Requests the current snapshot of matching declarations; peer replies with matching DECLAREs then D_FINAL
+|`0b10` |Future        |Subscribes to future declarations only; no D_FINAL; terminated by a later `Final` interest with the same `id`
+|`0b11` |CurrentFuture |Current snapshot + ongoing future declarations; D_FINAL marks end of snapshot; future updates continue until a `Final` interest
+|===
+
+== Message Flows
+
+=== Mode: Current
+
+----
+A                   B
+|     INTEREST      |   mode=Current
+|─────────────────>|
+|  DECL SUBSCRIBER  |   interest_id set (I==1 in enclosing DECLARE)
+|<─────────────────|
+~       ...         ~
+|     DECL FINAL    |   interest_id set — snapshot complete
+|<─────────────────|
+----
+
+=== Mode: CurrentFuture
+
+----
+A                   B
+|     INTEREST      |   mode=CurrentFuture
+|─────────────────>|
+|  DECL SUBSCRIBER  |   interest_id set (current snapshot)
+|<─────────────────|
+~       ...         ~
+|     DECL FINAL    |   interest_id set — snapshot complete
+|<─────────────────|
+|  DECL QUERYABLE   |   interest_id NOT set (future update)
+|<─────────────────|
+| UNDECL QUERYABLE  |   interest_id NOT set (future update)
+|<─────────────────|
+~       ...         ~
+| INTEREST (Final)  |   mode=Final, same id — stops future updates
+|─────────────────>|
+----
+
+=== Mode: Future
+
+----
+A                   B
+|     INTEREST      |   mode=Future (no snapshot requested)
+|─────────────────>|
+|  DECL SUBSCRIBER  |   interest_id NOT set (future update)
+|<─────────────────|
+~       ...         ~
+| INTEREST (Final)  |   mode=Final, same id — stops future updates
+|─────────────────>|
+----
+
+No D_FINAL is sent in `Future` mode because no current snapshot was requested.
+
+== INTEREST Wire Format (0x19)
+
+----
+Flags:
+  Mod[0]  Bit 5 — low bit of mode field (see mode table above)
+  Mod[1]  Bit 6 — high bit of mode field
+  Z       Bit 7 — extension chain follows
+
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|Mod| INTEREST|   ID = 0x19; Mod in bits 6:5
++-+-+-+---------+
+%    id : z32   %   VLE — Interest identifier (locally unique per session)
++---------------+
+|A|M|N|R|T|Q|S|K|   Options byte (present only when Mod != Final=0b00)
++---------------+
+% key_scope:z16 %   if Mod!=Final && R==1: VLE ExprId
++---------------+
+~  key_suffix   ~   if Mod!=Final && R==1 && N==1: <u8;z16>
++---------------+
+~  [int_exts]   ~   if Z==1
++---------------+
+----
+
+=== Flag Constants
+
+[cols="1,1,1,3"]
+|===
+|Flag |Bit |Value |Meaning
+
+|`Mod[0]` |5 |0x20 |Low bit of mode field
+|`Mod[1]` |6 |0x40 |High bit of mode field
+|`Z`      |7 |0x80 |Extension chain follows
+|===
+
+=== Options Byte
+
+Present only when `Mod != Final (0b00)`.
+
+[cols="1,1,3"]
+|===
+|Bit |Symbol |Meaning
+
+|0 |`K` |Interested in key expression declarations (D_KEYEXPR / U_KEYEXPR)
+|1 |`S` |Interested in subscriber declarations (D_SUBSCRIBER / U_SUBSCRIBER)
+|2 |`Q` |Interested in queryable declarations (D_QUERYABLE / U_QUERYABLE)
+|3 |`T` |Interested in token declarations (D_TOKEN / U_TOKEN)
+|4 |`R` |Restricted — interest applies only to the named key expression below
+|5 |`N` |Named — key expression has a suffix (only valid when R==1)
+|6 |`M` |Mapping — sender's mapping space (only valid when R==1)
+|7 |`A` |Aggregate — peer SHOULD aggregate matching replies (see below)
+|===
+
+=== INTEREST Extensions
+
+[cols="1,1,1,3"]
+|===
+|Ext ID |Type |M |Extension
+
+|0x1 |Z64  |N |QoS
+|0x2 |ZBuf |N |Timestamp
+|0x3 |Z64  |Y |NodeId
+|===
+
+The same extension set applies to Final-mode messages.
+
+== Final Mode (INTEREST_FINAL)
+
+When `Mod == 0b00` (Final), the message carries only the `id` field and optional extensions.
+No options byte or key expression is present.
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|0|0| INTEREST|   ID = 0x19; Mod = 0b00
++-+-+-+---------+
+%    id : z32   %   VLE — must match the original Interest id
++---------------+
+~  [int_exts]   ~   if Z==1 (same extensions as non-Final)
++---------------+
+----
+
+Implementations MUST decode `Mod == 0b00` as a distinct message type (no options byte is read or expected).
+
+== Aggregate Flag (A)
+
+When bit 7 of the options byte is set, the receiver SHOULD aggregate matching declarations before replying.
+For example, if multiple subscribers share an intersecting key expression, the peer MAY reply with a single representative declaration instead of one per entity.
+This reduces the number of DECLARE messages during the snapshot phase and is appropriate when the requester only needs to know that _some_ matching entities exist, not the precise count.
+
+== Relationship to DECLARE/D_FINAL
+
+When a DECLARE is sent in response to a `Current` or `CurrentFuture` interest, the enclosing DECLARE message MUST set `I==1` and include the `interest_id`.
+After all declarations for the snapshot have been sent, the peer MUST send a DECLARE with body `D_FINAL` and `I==1` to signal completion.
+
+Future declarations (after D_FINAL, in `CurrentFuture` or `Future` mode) are sent as plain DECLARE messages with `I==0`.

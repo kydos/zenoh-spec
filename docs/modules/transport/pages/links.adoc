@@ -1,0 +1,62 @@
+= Links
+:description: Transport link types and their properties in Zenoh.
+
+A _transport link_ is a point-to-point or multicast channel between two Zenoh nodes over which transport frames are exchanged.
+
+== Link Properties
+
+`is_reliable`::
+Whether the underlying link guarantees delivery and ordering.
+TCP, TLS, QUIC, and Serial (with a reliable framing layer) are reliable.
+UDP unicast and UDP multicast are not.
+
+`is_streamed`::
+Whether the link is stream-oriented (`true`) or datagram-oriented (`false`).
+Stream links require a 2-byte little-endian length prefix on each batch (see xref:wire:frame-format.adoc[]).
+Datagram links do not.
+
+`mtu`::
+Maximum transmission unit in bytes.
+For stream links, the effective MTU is the negotiated `batch_size`.
+For datagram links, it is constrained by the UDP payload limit and any IP fragmentation.
+
+== Supported Link Protocols
+
+[cols="1,1,1,1,3"]
+|===
+|Protocol |Reliable |Streamed |Default Port |Notes
+
+|TCP       |Yes |Yes |7447 |Standard reliable transport; stream-framed
+|TLS       |Yes |Yes |7447 |Encrypted TCP; stream-framed
+|QUIC      |Yes |Yes |7447 |Encrypted, multiplexed; stream-framed
+|UDP Unicast   |No |No |7447 |Best-effort unicast; datagram-framed
+|UDP Multicast |No |No |7446 |One-to-many; used for scouting and multicast sessions
+|Serial        |Configurable |Yes |— |Constrained / embedded devices; stream-framed
+|===
+
+Default multicast group: `224.0.0.224` (IPv4), `ff02::1` (IPv6).
+
+== Batch Size
+
+For each link, the effective maximum batch size is:
+
+* On unicast links: the minimum of the two endpoints' `batch_size` values negotiated during INIT.
+* On multicast links: the minimum of the link MTU and the local node's `batch_size`.
+* Absolute maximum: 65 535 bytes (the range of the 2-byte length prefix on stream links).
+
+== Session Establishment per Link Type
+
+[cols="1,3"]
+|===
+|Link type |Establishment mechanism
+
+|Unicast (TCP, TLS, QUIC) |INIT SYN/ACK then OPEN SYN/ACK; see xref:session:open-accept.adoc[]
+|Multicast (UDP multicast) |No handshake; periodic JOIN advertisement; see xref:join.adoc[]
+|===
+
+== Link Failure Detection
+
+On unicast links: lease expiry detected by absence of KEEP_ALIVE or any other message.
+On multicast links: absence of JOIN messages within the JOIN lease period.
+
+See xref:keep-alive.adoc[] for the lease / keep-alive interval specification.

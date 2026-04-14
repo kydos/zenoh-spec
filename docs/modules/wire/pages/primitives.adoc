@@ -1,0 +1,390 @@
+= Wire Primitives
+:description: Scalar types, VLE integers, and composite primitives used in the Zenoh wire format.
+
+This page is the normative reference for the encoding building blocks used throughout the Zenoh protocol.
+Every higher-level message is composed exclusively of these primitives.
+
+== Notation
+
+[cols="1,3"]
+|===
+|Symbol |Meaning
+
+|`u8` |Fixed 1-byte unsigned integer
+|`u16 LE` |Fixed 2-byte unsigned integer, little-endian
+|`z8` |VLE-encoded unsigned integer, underlying type `u8` (1–2 bytes on wire)
+|`z16` |VLE-encoded unsigned integer, underlying type `u16` (1–3 bytes on wire)
+|`z32` |VLE-encoded unsigned integer, underlying type `u32` (1–5 bytes on wire)
+|`z64` |VLE-encoded unsigned integer, underlying type `u64` (1–9 bytes on wire)
+|`<u8;z16>` |Byte array: `z16` length prefix followed by that many bytes
+|`<u8;z32>` |Byte array: `z32` length prefix followed by that many bytes
+|`<utf8;z8>` |UTF-8 string: `z8` byte-length prefix followed by that many UTF-8 bytes
+|`% field %` |VLE-encoded integer field in a byte diagram
+|`~ field ~` |Variable-length byte sequence in a byte diagram
+|`+--+` |Fixed-width byte boundary in a byte diagram
+|`[F]` |Field present only when flag `F` is set
+|===
+
+All multi-byte fixed-width integers use *little-endian* byte order.
+Bit positions within a byte are numbered from the least-significant bit (bit 0) to the most-significant bit (bit 7).
+
+== Stream Framing (TCP Length Prefix)
+
+Stream-oriented transports (TCP, TLS, QUIC) do not preserve message boundaries.
+Every transport message sent over a stream transport MUST be prefixed with a 2-byte little-endian length field:
+
+----
+ 0               1
+ 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|         length (u16 LE)       |   total bytes that follow
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~          message bytes        ~   exactly `length` bytes
++-------------------------------+
+----
+
+The maximum framed message length is 65 535 bytes (2¹⁶ − 1).
+
+Datagram transports (UDP unicast, UDP multicast) MUST NOT prepend this prefix; the datagram boundary delimits the message.
+
+[[vle]]
+== Variable-Length Encoding (VLE / LEB128)
+
+Zenoh uses *Little-Endian Base-128 (LEB128)* encoding for all variable-length unsigned integers.
+
+=== Algorithm
+
+Each encoded byte contributes 7 bits of value in little-endian order.
+Bit 7 of each byte is the _continuation flag_: `1` means more bytes follow; `0` means this is the last byte.
+
+[source,pseudocode]
+----
+encode_vle(n: uint):
+    loop:
+        b = n & 0x7F
+        n >>= 7
+        if n != 0: b |= 0x80   -- set continuation flag
+        emit b
+        if n == 0: break
+
+decode_vle() -> uint:
+    n = 0; shift = 0
+    loop:
+        b = read_byte()
+        n |= (b & 0x7F) << shift
+        shift += 7
+        if (b & 0x80) == 0: break   -- last byte
+    return n
+----
+
+=== Encoding Examples
+
+----
+Value       Encoded bytes         Notes
+──────────────────────────────────────────────────────────────
+0           0x00                  single byte
+127         0x7F                  single byte, max 1-byte value
+128         0x80 0x01             0x80 = continuation; 0x01 = last
+300         0xAC 0x02             44 | (2 << 7) = 300
+16383       0xFF 0x7F             max 2-byte value
+16384       0x80 0x80 0x01
+2³²-1       0xFF 0xFF 0xFF 0xFF 0x0F   5 bytes
+2⁶⁴-1       0xFF×9 0x01               9 bytes
+----
+
+=== Type Sizes
+
+[cols="1,2,2"]
+|===
+|Type |Underlying integer |Maximum bytes on wire
+
+|`z8`  |`u8`  |2
+|`z16` |`u16` |3
+|`z32` |`u32` |5
+|`z64` |`u64` |9
+|===
+
+== Length-Prefixed Byte Arrays
+
+=== `<u8;z16>` — byte array with z16 length prefix
+
+----
+% length : z16 %   VLE-encoded byte count (0–65 535)
+~  [u8 × len]  ~   raw bytes
+----
+
+=== `<u8;z32>` — byte array with z32 length prefix
+
+----
+% length : z32 %   VLE-encoded byte count (0–4 294 967 295)
+~  [u8 × len]  ~   raw bytes
+----
+
+=== `<utf8;z8>` — UTF-8 string with z8 byte-length prefix
+
+----
+% length : z8  %   VLE-encoded byte count of the UTF-8 string
+~  utf8 bytes  ~   exactly `length` UTF-8 encoded bytes (no NUL terminator)
+----
+
+Strings MUST be valid UTF-8.
+
+=== List of UTF-8 strings
+
+Used to encode locator lists (e.g., in HELLO messages):
+
+----
+% count  : z8  %   VLE-encoded number of strings that follow
+~  string 1    ~   each string is <utf8;z8>
+~  string 2    ~
+~     ...      ~
+----
+
+[[zenohid]]
+== ZenohID (ZID)
+
+A `ZenohID` is an opaque, variable-length node identifier of 1–16 bytes generated randomly at node startup.
+
+=== ZID in extensions (SourceInfo, ResponderId, Timestamp)
+
+When carried inside extension payloads the ZID is encoded with a length byte:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|zid_len|X|X|X|X|   upper 4 bits: encoded length; lower 4 bits: context-specific
++-+-+-+-+-+-+-+-+
+~      ZID      ~   exactly (1 + zid_len) bytes
+----
+
+`zid_len` (bits 7:4):: Encoded length.  Actual byte count = `1 + zid_len`, giving range 1–16.
+
+=== ZID in message bodies (INIT, JOIN, SCOUT, HELLO)
+
+In these messages the ZID length shares a packed byte with other fields:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|zid_len|  misc |   bits 7:4 = zid_len; bits 3:0 = message-specific
++-+-+-+-+-------+
+~      ZID      ~   (1 + zid_len) bytes, little-endian
+----
+
+The split of the lower 4 bits is message-specific (WhatAmI, flags, etc.).
+
+[[whatami]]
+== WhatAmI (Node Role)
+
+A 2-bit value encoding the role of a Zenoh node:
+
+[cols="1,1,3"]
+|===
+|Code |Name |Meaning
+
+|`0b00` |Router |Infrastructure node that forwards messages between sessions
+|`0b01` |Peer |Full participant, can connect to routers and other peers
+|`0b10` |Client |Leaf node, connects only to routers or peers
+|`0b11` |Reserved |MUST NOT be used
+|===
+
+In INIT, JOIN, and HELLO, `WhatAmI` occupies bits 1:0 of the packed ZID-length byte.
+
+[[whatamimatcher]]
+== WhatAmIMatcher (Scout Bitmap)
+
+A 3-bit bitmap for filtering which node roles should respond to a SCOUT:
+
+[cols="1,2"]
+|===
+|Bit |Role matched
+
+|0 (value `0b001`) |Router
+|1 (value `0b010`) |Peer
+|2 (value `0b100`) |Client
+|===
+
+Multiple bits may be set simultaneously (e.g., `0b011` = Router or Peer).
+In SCOUT, the `WhatAmIMatcher` occupies bits 2:0 of the packed ZID-length byte.
+
+[[resolution]]
+== Resolution Byte
+
+A packed byte negotiated during INIT/JOIN that governs the wire widths of sequence numbers and request IDs:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|X|X|X|X|RID|FSN|
++-+-+-+-+-+-+-+-+
+----
+
+[cols="1,1,3"]
+|===
+|Sub-field |Bits |Meaning
+
+|`FSN` |1:0 |Frame/Fragment Sequence Number resolution
+|`RID` |3:2 |Request ID resolution
+|Reserved |7:4 |MUST be zero
+|===
+
+[cols="1,1,2"]
+|===
+|Code |Width |Maximum value
+
+|`0b00` |8 bits |255
+|`0b01` |16 bits |65 535
+|`0b10` |32 bits |4 294 967 295 **(default)**
+|`0b11` |64 bits |2⁶⁴ − 1
+|===
+
+Default resolution byte: `0x0A` (`0b00001010`, FSN = 32-bit = `0b10`, RID = 32-bit = `0b10`).
+
+Sequence numbers and request IDs are carried as VLE-encoded integers on the wire; the resolution controls their maximum value, which governs wire cost at maximum utilisation.
+
+[[wireexpr]]
+== WireExpr (Key Expression)
+
+A `WireExpr` is a compressed representation of a key expression consisting of:
+
+`scope` (`ExprId`, z16)::
+Maps to a previously declared key expression (0 = global scope / no compression).
+
+`suffix` (optional)::
+A UTF-8 string appended to the scoped expression.  Present when the `N` flag is set in the enclosing message header.
+
+Wire encoding:
+
+----
+% key_scope : z16 %   ExprId (0 = global scope)
+~  key_suffix     ~   if N flag set: <u8;z16> suffix string
+----
+
+Flags governing WireExpr appear in the enclosing message header byte:
+
+[cols="1,1,3"]
+|===
+|Flag |Bit |Meaning
+
+|`N` |5 |Named — the suffix field is present
+|`M` |6 |Mapping — `1` = sender's mapping space; `0` = receiver's mapping space
+|===
+
+[[encoding]]
+== Encoding Field
+
+The Encoding field identifies the content type of a payload (analogous to a MIME type).
+It consists of a numeric ID and an optional opaque schema.
+
+----
+~ id_and_S : z32 ~   VLE z32; actual encoding_id = wire_value >> 1; S = wire_value & 0x01
+~  schema:<u8;z8>~   if S==1: opaque schema bytes
+----
+
+`id`:: 31-bit encoding identifier (the upper 31 bits of the z32 wire value); in practice, current IDs fit within 15 bits.
+`S` (Schema flag, bit 0):: if `1`, a `<u8;z8>` schema byte array follows.
+
+The encoding registry is application-defined; well-known values include 0 (raw bytes) and 1 (UTF-8 text).
+
+[[timestamp]]
+== Timestamp (HLC / NTP64 + ZenohID)
+
+A Zenoh Timestamp is a Hybrid Logical Clock (HLC) value from the `uhlc` library.
+It combines a 64-bit NTP timestamp with the `ZenohID` of the generating node.
+
+Wire encoding (as used in the Timestamp extension ZBuf payload):
+
+----
+% ntp64 : z64  %   64-bit NTP timestamp, VLE-encoded
+% zid_len: z8  %   VLE-encoded ZID byte count (1–16)
+~      ZID     ~   zid_len bytes (ZenohID of the clock source)
+----
+
+The 64-bit NTP value uses the standard format: bits 63:32 are seconds since 1900-01-01; bits 31:0 are the fractional second.
+The HLC augments the fraction bits to embed a logical counter when multiple events occur within the same physical clock tick, ensuring strict monotonicity.
+
+[[extension]]
+== Extension Header (TLV)
+
+Extensions are optional metadata blocks that follow the fixed fields of a message.
+Each extension is a Type-Length-Value triplet.
+
+=== Extension Header Byte
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|Z|ENC|M|  ID   |
++-+-+-+-+-------+
+----
+
+[cols="1,1,3"]
+|===
+|Field |Bits |Meaning
+
+|`Z` |7 |*More* — if 1, another extension follows immediately after this one
+|`ENC` |6:5 |*Encoding* — payload format (see table below)
+|`M` |4 |*Mandatory* — if 1, receiver MUST understand this extension
+|`ID` |3:0 |*Extension identifier* (0x0–0xF)
+|===
+
+=== ENC Values
+
+[cols="1,1,3"]
+|===
+|Name |`ENC` bits |Payload
+
+|Unit |`0b00` |No payload — header byte only
+|Z64  |`0b01` |One VLE-encoded u64 value (`z64`)
+|ZBuf |`0b10` |`z32` byte count followed by that many bytes
+|Reserved |`0b11` |MUST NOT be used
+|===
+
+=== Extension Wire Formats
+
+----
+Unit extension:
+  [header : u8]          ENC=0b00, no further bytes
+
+Z64 extension:
+  [header : u8]          ENC=0b01
+  % value  : z64 %       VLE-encoded u64
+
+ZBuf extension:
+  [header : u8]          ENC=0b10
+  % length : z32 %       VLE-encoded byte count
+  ~  [u8 × length] ~     raw bytes
+----
+
+=== Mandatory vs Optional
+
+`M=0`:: Unknown extensions SHOULD be skipped (read and discard the payload) and SHOULD be forwarded unchanged to next hops.  They MUST NOT cause an error.
+`M=1`:: Unknown mandatory extensions MUST cause the containing message to be rejected.  The connection MAY be closed with reason `UNSUPPORTED`.
+
+=== Extension Chain
+
+The `Z` bit chains extensions together.
+`Z=1` means another extension immediately follows; `Z=0` means this is the last extension:
+
+----
+[ext₁ header | Z=1] [ext₁ payload]
+[ext₂ header | Z=1] [ext₂ payload]
+[ext₃ header | Z=0] [ext₃ payload]   ← last extension; message body follows
+[first message body field]
+----
+
+[[message-header]]
+== Message Header Byte
+
+Every Zenoh message begins with a single header byte:
+
+----
+ 7 6 5 4 3 2 1 0
++-+-+-+-+-+-+-+-+
+|FL3|FL2|FL1| ID|
++-+-+-+---------+
+----
+
+`ID` (bits 4:0):: 5-bit message identifier (see per-layer tables in xref:message-format.adoc[]).
+`FL1` (bit 5), `FL2` (bit 6):: Message-specific flags.
+`FL3` (bit 7):: Always the *Z* (Extensions) flag: when set, one or more extension blocks follow the base message fields.

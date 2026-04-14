@@ -1,0 +1,68 @@
+= Key Expressions
+:description: The hierarchical naming scheme used to address Zenoh resources.
+
+A _Key Expression_ (KE) is a UTF-8 string that identifies one or more _resources_ in a Zenoh system.
+Key expressions follow a path-like structure and support structured wildcards for pattern matching.
+
+== Syntax
+
+A key expression is composed of _chunks_ separated by `/`.
+
+[source,abnf]
+----
+key-expr    = chunk *("/" chunk)
+chunk       = 1*(unreserved / pct-encoded) / wild1 / wildN
+wild1       = "*"
+wildN       = "**"
+unreserved  = ALPHA / DIGIT / "-" / "_" / "." / "~" / "@" / "$"
+pct-encoded = "%" HEXDIG HEXDIG
+----
+
+See xref:appendix:grammar.adoc[] for the complete formal grammar.
+
+== Canonical Form
+
+A well-formed key expression satisfies all of the following:
+
+* No trailing `/`.
+* No empty chunks (i.e., `//` is invalid).
+* `**` MUST NOT be adjacent to another `*` or `**` chunk (e.g., `a/**/**` is invalid).
+* The total length MUST be at least 1 character.
+
+Implementations MUST validate key expressions received from applications and SHOULD validate key expressions received on the wire.
+
+== Wildcards
+
+`*` (wild1)::
+Matches exactly one chunk (any non-empty sequence of characters that does not contain `/`).
++
+Example: `a/*/c` matches `a/b/c` and `a/xyz/c`, but not `a/b/d/c` or `a//c`.
+
+`**` (wildN)::
+Matches zero or more complete chunks (the empty sequence, or any sequence of `/`-separated chunks).
++
+Examples:
+* `a/**/c` matches `a/c`, `a/b/c`, and `a/b/d/c`.
+* `**` alone matches any key expression, including the empty string.
+
+== Intersection and Inclusion
+
+Two key expressions _intersect_ if there exists at least one concrete key string that matches both.
+
+Key expression _A_ _includes_ key expression _B_ if every string matching _B_ also matches _A_.
+
+These relations are used by routers to determine routing paths: a PUSH addressed to key `A` is forwarded to a subscriber declared on key `B` if and only if `A` and `B` intersect.
+
+== Wire Representation
+
+On the wire, a key expression is transmitted as a _WireExpr_ — a compact representation using a scope (ExprId) and an optional suffix:
+
+Full string (scope = 0)::
+The global scope ExprId `0` plus the full key expression string as the suffix.
+
+_ExprId_ reference (scope != 0)::
+A numeric alias for a previously declared key expression (via D_KEYEXPR), optionally with an additional suffix appended.
+This dramatically reduces wire overhead when the same key expression (or a prefix of it) is used repeatedly.
+
+See xref:wire:primitives.adoc#_wireexpr_key_expression[WireExpr] for the encoding details.
+See xref:session:declarations.adoc#_d_keyexpr_0x00_declare_key_expression[D_KEYEXPR] for how ExprIds are declared and released.

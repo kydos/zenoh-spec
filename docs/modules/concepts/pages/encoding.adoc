@@ -1,0 +1,57 @@
+= Value Encoding
+:description: How Zenoh describes the content type and schema of a value payload.
+
+A Zenoh _encoding_ describes the format of a message payload, enabling consumers to correctly interpret the bytes they receive.
+It is conveyed inline with data messages so that no out-of-band negotiation is required.
+
+== Structure
+
+An encoding consists of two fields:
+
+`id`:: A numeric identifier for a well-known media type or encoding scheme (up to 31 bits; in practice current IDs are small).
+`schema`:: An optional byte string that refines the encoding — for example, a Protobuf schema URL or an Avro schema fingerprint.
+
+== Wire Encoding
+
+The Encoding field is encoded as follows (see xref:wire:primitives.adoc#_encoding_field[Wire Primitives]):
+
+----
+~ id_and_S : z32 ~   VLE-encoded u32; actual encoding_id = wire_value >> 1; S = wire_value & 0x01
+~  schema:<u8;z8>~   if S==1: opaque schema bytes (z8 length prefix + raw bytes)
+----
+
+The schema byte array SHOULD be a UTF-8 string but this is not enforced.
+
+The Encoding field appears in PUT (flag `E`) and ERR (flag `E`) messages, and inside the QueryBody extension for QUERY messages.
+
+== Well-Known Encoding IDs
+
+The following IDs are reserved for common media types.
+Implementations SHOULD use these IDs for the corresponding types to enable interoperability.
+
+[cols="1,2,3"]
+|===
+|ID |Media type |Description
+
+|0  |`application/octet-stream` |Raw bytes — default when no encoding is specified
+|1  |`text/plain;charset=utf-8` |UTF-8 plain text
+|2  |`application/json` |JSON (RFC 8259)
+|3  |`application/cbor` |CBOR (RFC 8949)
+|4  |`application/protobuf` |Protocol Buffers (binary wire format)
+|5  |`application/msgpack` |MessagePack
+|6  |`application/cdv` |CDV (Custom Data Value, Zenoh native structured type)
+|===
+
+The full well-known ID registry is maintained separately; implementors SHOULD check the official Zenoh encoding registry for the current list.
+
+== Custom Encodings
+
+Applications MAY define custom encodings using IDs outside the well-known range.
+The `schema` field SHOULD carry sufficient information for a receiver to interpret the payload (e.g., a type URL or schema fingerprint).
+
+Implementations MUST treat unknown encoding IDs as opaque byte payloads and MUST NOT reject messages solely because the encoding ID is unrecognised.
+
+== Default Encoding
+
+When no Encoding field is present (flag `E==0` in PUT or ERR), the encoding is implicitly `application/octet-stream` (ID=0, no schema).
+Implementations MUST treat absent encoding as equivalent to ID=0.
