@@ -4,6 +4,13 @@
 Zenoh (pronounced _/zeno/_) is a pub/sub/query protocol engineered for the full compute continuum — from microcontrollers to cloud infrastructure.
 This document formally defines the wire format, protocol behaviours, and semantics of Zenoh version *{zenoh-version}*.
 
+****
+*WireShark Dissector*
+
+The https://github.com/kydos/zenoh-wireshark[zenoh-wireshark] plugin provides a WireShark dissector for the Zenoh protocol.
+It is the recommended tool for capturing and analysing Zenoh traffic on the wire.
+****
+
 == How to Read this Specification
 
 Readers new to Zenoh should start with the xref:introduction.adoc[Introduction] and xref:concepts:index.adoc[Concepts] sections before proceeding to the protocol details.
