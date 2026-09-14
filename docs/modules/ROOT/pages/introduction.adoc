@@ -2,7 +2,7 @@
 :description: Goals, design principles, and motivation for the Zenoh protocol.
 
 https://zenoh.io[Zenoh] unifies _data in motion_, _data at rest_, and _computations_ in a single coherent protocol designed to span the full compute continuum — from deeply embedded microcontrollers to cloud services.
-This revision of the specification is derived from the historical markdown specification and validated primarily against the current https://github.com/ecplipse-zenoh[zenoh-rust] implementation, with https://github.com/ecplipse-zenoh/zenoh-pico[zenoh-pico] and https://github.com/ecplipse-zenoh/zenoh-nostd[zenoh-nostd] used as a secondary implementation reference.
+This revision of the specification is derived from the historical markdown specification and validated primarily against the current https://github.com/eclipse-zenoh[zenoh-rust] implementation, with https://github.com/eclipse-zenoh/zenoh-pico[zenoh-pico] and https://github.com/eclipse-zenoh/zenoh-nostd[zenoh-nostd] used as a secondary implementation reference.
 
 == Motivation
 
