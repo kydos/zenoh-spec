@@ -11,7 +11,7 @@ A Zenoh network is a graph of _nodes_, each of which plays one of three xref:rol
 ┌─────────────────────────────────────┐
 │           Application API           │
 ├─────────────────────────────────────┤
-│     Data Plane  │   Query Plane      │  ← Push / Get / Reply
+│     Data Plane  │   Query Plane     │  ← Push / Get / Reply
 ├─────────────────────────────────────┤
 │            Session Layer            │  ← Open/Accept, Declarations, Interests
 ├─────────────────────────────────────┤
